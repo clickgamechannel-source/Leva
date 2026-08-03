@@ -599,6 +599,12 @@ async function poll() {
         continue;
       }
 
+      if (text === "/weather" || text === "погода") {
+        reply = await fetchWeather(48.77, 37.62, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^(погода|какая погода|прогноз погоды|weather)/i) || (text.includes("погод") && text.length < 80)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         let city = text.replace(/^(погода|какая погода|прогноз погоды|weather)\s*/i, "").trim();
