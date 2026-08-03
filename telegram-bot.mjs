@@ -405,8 +405,6 @@ function memoryContext() {
   return ctx;
 }
 
-function detectIntent(text) {
-
 function parseReminder(text) {
   const now = new Date();
   let clean = text.replace(/^(напомни мне|напомни|поставь напоминание|установи напоминание)\s*/i, "");
