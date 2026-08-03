@@ -33,6 +33,8 @@ const TTS_PROVIDER = process.env.TTS_PROVIDER || config.ttsProvider || "google";
 const GITHUB_KEY = process.env.GITHUB_KEY || config.githubKey || "";
 const GIST_ID = process.env.GIST_ID || config.gistId || "";
 const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeatherKey || "";
+const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
+const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
 
 if (!TELEGRAM_TOKEN) { log("TELEGRAM_TOKEN не задан."); process.exit(1); }
@@ -439,6 +441,12 @@ function checkReminders() {
   });
   for (const r of due) {
     tg("sendMessage", { chat_id: r.chatId || defaultChatId, text: "Напоминаю: " + r.message }).catch(() => {});
+    if (PUSHOVER_TOKEN && PUSHOVER_USER) {
+      fetch("https://api.pushover.net/1/messages.json", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: PUSHOVER_TOKEN, user: PUSHOVER_USER, message: r.message, title: "Race — напоминание", sound: "pushover" }),
+      }).catch(() => {});
+    }
     log("Напоминание: " + r.message);
   }
   if (due.length) saveMemory().catch(() => {});
