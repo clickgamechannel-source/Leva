@@ -32,6 +32,7 @@ const OPENAI_KEY = process.env.OPENAI_KEY || config.openaiKey || "";
 const TTS_PROVIDER = process.env.TTS_PROVIDER || config.ttsProvider || "google";
 const GITHUB_KEY = process.env.GITHUB_KEY || config.githubKey || "";
 const GIST_ID = process.env.GIST_ID || config.gistId || "";
+const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeatherKey || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
 
 if (!TELEGRAM_TOKEN) { log("TELEGRAM_TOKEN не задан."); process.exit(1); }
@@ -238,6 +239,37 @@ ${memoryContext()}
 }
 
 const writeQueue = new Map();
+
+const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
+const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малооблачно", "cloudy": "Облачно", "overcast": "Пасмурно", "drizzle": "Морось", "light-rain": "Дождь", "rain": "Дождь", "heavy-rain": "Ливень", "showers": "Ливень", "wet-snow": "Мокрый снег", "light-snow": "Снег", "snow": "Снег", "hail": "Град", "thunderstorm": "Гроза", "thunderstorm-with-rain": "Гроза с дождём" };
+
+async function fetchWeather(lat, lon, name, yandexKey) {
+  try {
+    if (yandexKey) {
+      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=3`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const d = await r.json();
+        const f = d.fact;
+        const cond = yandexWeatherMap[f.condition] || f.condition;
+        let reply = `Погода в ${name} (Яндекс):\n\nСейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\nВлажность: ${f.humidity}%\nВетер: ${f.wind_speed} м/с\nДавление: ${f.pressure_mm} мм\n\nПрогноз:\n`;
+        for (const day of (d.forecasts || []).slice(0, 3)) {
+          const p = day.parts?.day_short || day.parts?.day || {};
+          reply += `${day.date}: ${p.temp_min}°C / ${p.temp_max}°C, ${yandexWeatherMap[p.condition] || p.condition || "—"}\n`;
+        }
+        return reply;
+      }
+    }
+  } catch {}
+  // Open-Meteo fallback
+  const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+  const wd = await w.json();
+  const c = wd.current;
+  let reply = `Погода в ${name}:\n\nСейчас: ${weatherMap[c.weather_code] || "—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
+  for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
+    reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
+  }
+  return reply;
+}
 
 async function downloadVoice(fileId) {
   const r = await fetch(`${TG_API}/getFile?file_id=${fileId}`);
@@ -574,14 +606,7 @@ async function poll() {
         };
         const kl = knownLocations[city.toLowerCase()];
         if (kl) {
-          const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${kl.lat}&longitude=${kl.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
-          const wd = await w.json();
-          const c = wd.current;
-          const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
-          reply = `Погода в ${kl.name}:\n\nСейчас: ${weatherMap[c.weather_code]||"—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
-          for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
-            reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
-          }
+          reply = await fetchWeather(kl.lat, kl.lon, kl.name, YANDEX_WEATHER_KEY);
           await tg("sendMessage", { chat_id: chatId, text: reply });
           continue;
         }
@@ -592,15 +617,7 @@ async function poll() {
             reply = `Город "${city}" не найден.`;
           } else {
             const { name, latitude, longitude, country } = gd.results[0];
-            const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
-            const wd = await w.json();
-            const c = wd.current;
-            const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
-            const wcode = weatherMap[c.weather_code] || "—";
-            reply = `Погода в ${name}${country ? ", " + country : ""}:\n\nСейчас: ${wcode}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
-            for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
-              reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
-            }
+            reply = await fetchWeather(latitude, longitude, name + (country ? ", " + country : ""), YANDEX_WEATHER_KEY);
           }
         } catch (e) {
           reply = "Не удалось получить погоду. Попробуй позже.";
