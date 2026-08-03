@@ -620,18 +620,7 @@ async function poll() {
           reply = await editAndSendPhoto(chatId, photoBase64, caption);
           continue;
         } else if (caption) {
-          const r = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
-            body: JSON.stringify({
-              model: "gpt-4o-mini", max_tokens: 800,
-              messages: [{ role: "user", content: [
-                { type: "text", text: caption },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
-              ]}],
-            }),
-          });
-          const j = await r.json();
-          reply = j.choices?.[0]?.message?.content || "Не удалось обработать.";
+          reply = await analyzePhoto(photoBase64, caption, 800);
         } else {
           reply = await analyzePhoto(photoBase64, "Опиши подробно что на этом фото. Если там текст — прочитай его. На русском.", 500);
         }
