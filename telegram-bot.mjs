@@ -514,6 +514,65 @@ async function poll() {
       let text = msg.text?.trim();
       let voiceRequested = false;
 
+      if (!text && msg.photo) {
+        const caption = msg.caption?.trim() || "";
+        const photo = msg.photo[msg.photo.length - 1];
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        log(`<- [${userId}] [фото] ${caption.slice(0, 60)}`);
+
+        const fileR = await fetch(`${TG_API}/getFile?file_id=${photo.file_id}`);
+        const fileD = await fileR.json();
+        if (!fileD.ok) { await tg("sendMessage", { chat_id: chatId, text: "Не удалось получить фото." }); continue; }
+        const photoUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileD.result.file_path}`;
+        const photoData = await fetch(photoUrl);
+        const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
+
+        if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
+          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+            body: JSON.stringify({
+              model: "gpt-4o-mini", max_tokens: 1000,
+              messages: [{ role: "user", content: [
+                { type: "text", text: "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй." },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
+              ]}],
+            }),
+          });
+          const j = await r.json();
+          reply = j.choices?.[0]?.message?.content || "Не удалось распознать.";
+        } else if (caption.match(/^(опиши|что на фото|что изображено|опиши фото|что это)/i)) {
+          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+            body: JSON.stringify({
+              model: "gpt-4o-mini", max_tokens: 500,
+              messages: [{ role: "user", content: [
+                { type: "text", text: "Опиши кратко что на этом фото. На русском." },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
+              ]}],
+            }),
+          });
+          const j = await r.json();
+          reply = j.choices?.[0]?.message?.content || "Не удалось описать.";
+        } else if (caption) {
+          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+            body: JSON.stringify({
+              model: "gpt-4o-mini", max_tokens: 800,
+              messages: [{ role: "user", content: [
+                { type: "text", text: caption },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
+              ]}],
+            }),
+          });
+          const j = await r.json();
+          reply = j.choices?.[0]?.message?.content || "Не удалось обработать.";
+        } else {
+          reply = "Я вижу фото! Напиши что с ним сделать:\n• «прочитай текст» — распознать\n• «опиши фото» — что на нём\n• Или задай вопрос про фото";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (!text && msg.voice) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         log(`<- [${userId}] [голосовое]`);
