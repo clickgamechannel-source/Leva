@@ -628,7 +628,17 @@ async function poll() {
         const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
         lastPhoto.set(userId, photoBase64);
 
-        if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
+        if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
+          const marketplace = caption.match(/озон|ozon/i) ? "site:ozon.ru" : caption.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
+          const ocrText = await analyzePhoto(photoBase64, "На этом фото товар. Если на нём есть артикул, штрихкод, название товара или модель — выведи только эту информацию. Без лишних слов.", 300);
+          const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
+          reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
+          if (marketplace) {
+            reply += await webSearch(`${searchQuery} ${marketplace}`);
+          } else {
+            reply += await webSearch(searchQuery);
+          }
+        } else if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
           reply = await analyzePhoto(photoBase64, "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй.", 1000);
         } else if (caption.match(/^(опиши|что на фото|что изображено|опиши фото|что это)/i)) {
           reply = await analyzePhoto(photoBase64, "Опиши кратко что на этом фото. На русском.", 500);
@@ -948,6 +958,14 @@ async function poll() {
       } else if (lastPhoto.has(userId) && text.match(/(обведи|выдели|отметь|пометь|кружочк|красн|рамк|чб|чёрно-бел|черно-бел|grayscale|ярче|темнее|яркость|контраст|поверни|отзеркаль)/i)) {
         const editResult = await editAndSendPhoto(chatId, lastPhoto.get(userId), text);
         if (editResult !== "Обработано") await tg("sendMessage", { chat_id: chatId, text: editResult });
+        continue;
+      } else if (lastPhoto.has(userId) && text.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries|что за товар)/i)) {
+        const marketplace = text.match(/озон|ozon/i) ? "site:ozon.ru" : text.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
+        const ocrText = await analyzePhoto(lastPhoto.get(userId), "На этом фото товар. Выведи артикул, штрихкод, название, модель — только саму информацию. Без лишних слов.", 300);
+        const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || text.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
+        reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
+        reply += await webSearch(`${searchQuery} ${marketplace}`);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       } else if (lastPhoto.has(userId) && text.match(/^(прочитай|читай|распознай|ocr|опиши|что на фото|что изображено)/i)) {
         reply = await analyzePhoto(lastPhoto.get(userId), text, 500);
