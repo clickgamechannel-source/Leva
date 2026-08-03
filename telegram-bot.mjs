@@ -357,8 +357,17 @@ async function textToVoice(text, voice = "nova") {
   }
 }
 
-let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova" }, dialogues: [], reminders: [] };
+let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova", timezone: 3 }, dialogues: [], reminders: [] };
 const defaultChatId = 7649644701;
+const TZ_OFFSET = (botMemory.prefs?.timezone || 3) * 60 * 60 * 1000; // MSK = UTC+3
+
+function mskTime(date) {
+  return new Date((date || new Date()).getTime() + TZ_OFFSET);
+}
+
+function fromMSK(date) {
+  return new Date(date.getTime() - TZ_OFFSET);
+}
 let dialogueCounter = 0;
 
 async function loadMemory() {
@@ -408,10 +417,9 @@ function memoryContext() {
 }
 
 function parseReminder(text) {
-  const now = new Date();
+  const now = mskTime();
   let clean = text.replace(/^(напомни мне|напомни|поставь напоминание|установи напоминание)\s*/i, "");
-  let target = null;
-  let msg = "";
+  let target = null, msg = "";
   const inMatch = clean.match(/через\s+(\d+)\s+(минут[уы]?|мин|час[ао]?|часов|день|дня|дней|недел[юиь]?)\s+(.+)/i);
   const tomorrowMatch = clean.match(/завтра\s+(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
   const timeMatch = clean.match(/(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
@@ -428,7 +436,7 @@ function parseReminder(text) {
     if (target <= now) target.setDate(target.getDate() + 1);
     msg = timeMatch[3].trim();
   }
-  if (target && msg && target > now) return { time: target.toISOString(), message: msg, chatId: defaultChatId, created: now.toISOString() };
+  if (target && msg && target > now) return { time: fromMSK(target).toISOString(), message: msg, chatId: defaultChatId, created: new Date().toISOString() };
   return null;
 }
 
@@ -666,8 +674,8 @@ async function poll() {
           if (!botMemory.reminders) botMemory.reminders = [];
           botMemory.reminders.push(reminder);
           await saveMemory();
-          const t = new Date(reminder.time);
-          reply = `Напоминание: ${t.toLocaleDateString("ru-RU")} в ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} — «${reminder.message}»`;
+          const t = mskTime(new Date(reminder.time));
+          reply = `Напоминание: ${t.toLocaleDateString("ru-RU")} в ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} (МСК) — «${reminder.message}»`;
         } else {
           reply = "Не поняла когда. Примеры:\n• напомни через 10 минут проверить\n• напомни завтра в 9:00 встреча\n• напомни в 15:30 позвонить";
         }
@@ -687,7 +695,7 @@ async function poll() {
           if (!botMemory.reminders) botMemory.reminders = [];
           botMemory.reminders.push({ time: t.toISOString(), message: `Таймер сработал: ${label}`, chatId: defaultChatId, created: now.toISOString(), sound: "siren" });
           await saveMemory();
-          reply = `Таймер на ${num} ${unit}. Сработает в ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+          reply = `Таймер на ${num} ${unit}. Сработает в ${mskTime(t).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (МСК)`;
         } else {
           reply = "Примеры:\n• таймер 5 минут\n• таймер на 30 минут обед\n• таймер 10 секунд";
         }
@@ -701,11 +709,11 @@ async function poll() {
         const daily = /каждый день|ежедневно|повторять/i.test(text);
         if (match) {
           const h = parseInt(match[1]), m = parseInt(match[2]), label = (match[3] || "будильник").trim();
-          const now = new Date();
-          let t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
-          if (t <= now) t.setDate(t.getDate() + 1);
+          const nowMSK = mskTime();
+          let t = new Date(nowMSK.getFullYear(), nowMSK.getMonth(), nowMSK.getDate(), h, m, 0);
+          if (t <= nowMSK) t.setDate(t.getDate() + 1);
           if (!botMemory.reminders) botMemory.reminders = [];
-          botMemory.reminders.push({ time: t.toISOString(), message: `Будильник: ${label}`, chatId: defaultChatId, created: now.toISOString(), daily: daily, sound: "alien" });
+          botMemory.reminders.push({ time: fromMSK(t).toISOString(), message: `Будильник: ${label}`, chatId: defaultChatId, created: new Date().toISOString(), daily: daily, sound: "alien" });
           await saveMemory();
           reply = `Будильник на ${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} — «${label}»`;
           if (daily) reply += " (повтор каждый день)";
@@ -722,8 +730,8 @@ async function poll() {
         } else {
           reply = "Твои напоминания:\n";
           botMemory.reminders.forEach((r, i) => {
-            const t = new Date(r.time);
-            reply += `${i + 1}. ${t.toLocaleDateString("ru-RU")} ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} — ${r.message}\n`;
+            const t = mskTime(new Date(r.time));
+            reply += `${i + 1}. ${t.toLocaleDateString("ru-RU")} ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} (МСК) — ${r.message}${r.daily ? " [ежедневно]" : ""}\n`;
           });
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
