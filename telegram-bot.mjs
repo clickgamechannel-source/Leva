@@ -355,7 +355,8 @@ async function textToVoice(text, voice = "nova") {
   }
 }
 
-let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova" }, dialogues: [] };
+let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova" }, dialogues: [], reminders: [] };
+const defaultChatId = 7649644701;
 let dialogueCounter = 0;
 
 async function loadMemory() {
@@ -370,7 +371,7 @@ async function loadMemory() {
       const loaded = JSON.parse(content);
       botMemory.facts = loaded.facts || [];
       botMemory.prefs = loaded.prefs || { bot_name: "Race", bot_gender: "female", voice: "nova" };
-      botMemory.dialogues = loaded.dialogues || [];
+      botMemory.reminders = loaded.reminders || [];
     }
     log("Память загружена: " + (botMemory.facts?.length || 0) + " фактов");
   } catch (e) {
@@ -403,6 +404,48 @@ function memoryContext() {
   }
   return ctx;
 }
+
+function detectIntent(text) {
+
+function parseReminder(text) {
+  const now = new Date();
+  let clean = text.replace(/^(напомни мне|напомни|поставь напоминание|установи напоминание)\s*/i, "");
+  let target = null;
+  let msg = "";
+  const inMatch = clean.match(/через\s+(\d+)\s+(минут[уы]?|мин|час[ао]?|часов|день|дня|дней|недел[юиь]?)\s+(.+)/i);
+  const tomorrowMatch = clean.match(/завтра\s+(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
+  const timeMatch = clean.match(/(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
+  if (tomorrowMatch) {
+    target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, parseInt(tomorrowMatch[1]), parseInt(tomorrowMatch[2]), 0);
+    msg = tomorrowMatch[3].trim();
+  } else if (inMatch) {
+    const num = parseInt(inMatch[1]), unit = inMatch[2];
+    const mul = { минут: 60, минуту: 60, минуты: 60, мин: 60, час: 3600, часа: 3600, часов: 3600, день: 86400, дня: 86400, дней: 86400, неделю: 604800, недели: 604800, недель: 604800 };
+    target = new Date(now.getTime() + num * (mul[unit] || 60) * 1000);
+    msg = inMatch[3].trim();
+  } else if (timeMatch) {
+    target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0);
+    if (target <= now) target.setDate(target.getDate() + 1);
+    msg = timeMatch[3].trim();
+  }
+  if (target && msg && target > now) return { time: target.toISOString(), message: msg, chatId: defaultChatId, created: now.toISOString() };
+  return null;
+}
+
+function checkReminders() {
+  const now = new Date();
+  const due = [];
+  botMemory.reminders = (botMemory.reminders || []).filter((r) => {
+    if (new Date(r.time) <= now) { due.push(r); return false; }
+    return true;
+  });
+  for (const r of due) {
+    tg("sendMessage", { chat_id: r.chatId || defaultChatId, text: "Напоминаю: " + r.message }).catch(() => {});
+    log("Напоминание: " + r.message);
+  }
+  if (due.length) saveMemory().catch(() => {});
+}
+setInterval(checkReminders, 30000);
 
 function detectIntent(text) {
   const t = text.toLowerCase();
@@ -603,6 +646,48 @@ async function poll() {
 
       if (text === "/weather" || text === "погода") {
         reply = await fetchWeather(48.77, 37.62, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(напомни мне|напомни|поставь напоминание|установи напоминание)/i) && text.match(/через|завтра|в \d|послезавтра/)) {
+        const reminder = parseReminder(text);
+        if (reminder) {
+          if (!botMemory.reminders) botMemory.reminders = [];
+          botMemory.reminders.push(reminder);
+          await saveMemory();
+          const t = new Date(reminder.time);
+          reply = `Напоминание: ${t.toLocaleDateString("ru-RU")} в ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} — «${reminder.message}»`;
+        } else {
+          reply = "Не поняла когда. Примеры:\n• напомни через 10 минут проверить\n• напомни завтра в 9:00 встреча\n• напомни в 15:30 позвонить";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(мои напоминания|список напоминаний|покажи напоминания)/i)) {
+        if (!botMemory.reminders?.length) {
+          reply = "У тебя нет активных напоминаний.";
+        } else {
+          reply = "Твои напоминания:\n";
+          botMemory.reminders.forEach((r, i) => {
+            const t = new Date(r.time);
+            reply += `${i + 1}. ${t.toLocaleDateString("ru-RU")} ${t.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })} — ${r.message}\n`;
+          });
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(удали напоминание|убери напоминание|отмени напоминание)/i)) {
+        const idx = parseInt(text.match(/\d+/)?.[0]);
+        if (idx && idx > 0 && idx <= (botMemory.reminders?.length || 0)) {
+          const r = botMemory.reminders.splice(idx - 1, 1)[0];
+          await saveMemory();
+          reply = `Удалено: «${r.message}»`;
+        } else {
+          reply = "Какое удалить? Напиши номер. Посмотри список: «мои напоминания»";
+        }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
