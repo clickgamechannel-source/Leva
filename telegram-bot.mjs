@@ -568,7 +568,18 @@ async function poll() {
           const j = await r.json();
           reply = j.choices?.[0]?.message?.content || "Не удалось обработать.";
         } else {
-          reply = "Я вижу фото! Напиши что с ним сделать:\n• «прочитай текст» — распознать\n• «опиши фото» — что на нём\n• Или задай вопрос про фото";
+          const r = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+            body: JSON.stringify({
+              model: "gpt-4o-mini", max_tokens: 500,
+              messages: [{ role: "user", content: [
+                { type: "text", text: "Опиши подробно что на этом фото. Если там текст — прочитай его. На русском." },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
+              ]}],
+            }),
+          });
+          const j = await r.json();
+          reply = j.choices?.[0]?.message?.content || "Не удалось обработать фото.";
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
