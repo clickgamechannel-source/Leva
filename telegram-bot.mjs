@@ -614,7 +614,7 @@ async function poll() {
       let voiceRequested = false;
       let reply = "";
 
-      if (!text && msg.photo) {
+      if (msg.photo) {
         const caption = msg.caption?.trim() || "";
         const photo = msg.photo[msg.photo.length - 1];
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
