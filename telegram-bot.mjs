@@ -560,6 +560,34 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(погода|какая погода|прогноз погоды|weather)/i) || (text.includes("погод") && text.length < 80)) {
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        let city = text.replace(/^(погода|какая погода|прогноз погоды|weather)\s*/i, "").trim();
+        if (!city || city.length < 2) city = "Луганск";
+        try {
+          const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru`);
+          const gd = await geo.json();
+          if (!gd.results?.length) {
+            reply = `Город "${city}" не найден.`;
+          } else {
+            const { name, latitude, longitude, country } = gd.results[0];
+            const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+            const wd = await w.json();
+            const c = wd.current;
+            const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
+            const wcode = weatherMap[c.weather_code] || "—";
+            reply = `Погода в ${name}${country ? ", " + country : ""}:\n\nСейчас: ${wcode}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
+            for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
+              reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
+            }
+          }
+        } catch (e) {
+          reply = "Не удалось получить погоду. Попробуй позже.";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.startsWith("/vault list")) {
         const sub = text.slice(12).trim();
         reply = listVault(sub || "");
