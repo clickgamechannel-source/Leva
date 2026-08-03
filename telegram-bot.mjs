@@ -24,15 +24,15 @@ if (existsSync(CONFIG_FILE)) {
   config = JSON.parse(readFileSync(CONFIG_FILE, "utf8"));
 }
 
-const TELEGRAM_TOKEN = config.telegramToken || process.env.TELEGRAM_TOKEN;
-const DEEPSEEK_KEY = config.deepseekKey || process.env.DEEPSEEK_API_KEY;
-const DEEPSEEK_MODEL = config.model || "deepseek-v4-pro";
-const GROQ_KEY = config.groqKey || process.env.GROQ_API_KEY || "";
-const OPENAI_KEY = config.openaiKey || process.env.OPENAI_API_KEY || "";
-const TTS_PROVIDER = config.ttsProvider || "google";
-const GITHUB_KEY = config.githubKey || "";
-const GIST_ID = config.gistId || "";
-const OBSIDIAN_VAULT = config.obsidianVault || "D:/OBSIDIAN/Leva";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || config.telegramToken;
+const DEEPSEEK_KEY = process.env.DEEPSEEK_KEY || config.deepseekKey;
+const DEEPSEEK_MODEL = process.env.MODEL || config.model || "deepseek-v4-pro";
+const GROQ_KEY = process.env.GROQ_KEY || config.groqKey || "";
+const OPENAI_KEY = process.env.OPENAI_KEY || config.openaiKey || "";
+const TTS_PROVIDER = process.env.TTS_PROVIDER || config.ttsProvider || "google";
+const GITHUB_KEY = process.env.GITHUB_KEY || config.githubKey || "";
+const GIST_ID = process.env.GIST_ID || config.gistId || "";
+const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
 
 if (!TELEGRAM_TOKEN) { log("TELEGRAM_TOKEN не задан."); process.exit(1); }
 if (!DEEPSEEK_KEY) { log("DEEPSEEK_API_KEY не задан."); process.exit(1); }
