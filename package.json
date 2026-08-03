@@ -1,0 +1,11 @@
+{
+  "name": "race-telegram-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node telegram-bot.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
