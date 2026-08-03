@@ -242,6 +242,8 @@ const writeQueue = new Map();
 
 const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
 const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малооблачно", "cloudy": "Облачно", "overcast": "Пасмурно", "drizzle": "Морось", "light-rain": "Дождь", "rain": "Дождь", "heavy-rain": "Ливень", "showers": "Ливень", "wet-snow": "Мокрый снег", "light-snow": "Снег", "snow": "Снег", "hail": "Град", "thunderstorm": "Гроза", "thunderstorm-with-rain": "Гроза с дождём" };
+const weatherEmoji = { "clear": "☀️", "partly-cloudy": "🌤", "cloudy": "☁️", "overcast": "☁️", "drizzle": "🌦", "light-rain": "🌧", "rain": "🌧", "heavy-rain": "⛈", "showers": "🌧", "wet-snow": "🌨", "light-snow": "❄️", "snow": "❄️", "hail": "🌨", "thunderstorm": "⛈", "thunderstorm-with-rain": "⛈" };
+const periodEmoji = { morning: "🌅", day: "☀️", evening: "🌆", night: "🌙" };
 
 async function fetchWeather(lat, lon, name, yandexKey) {
   try {
@@ -252,14 +254,14 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         const f = d.fact;
         const cond = yandexWeatherMap[f.condition] || f.condition;
         const dirMap = { "nw": "СЗ", "n": "С", "ne": "СВ", "e": "В", "se": "ЮВ", "s": "Ю", "sw": "ЮЗ", "w": "З", "c": "Штиль" };
-        let reply = `Погода в ${name} (Яндекс):\n\nСейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\nВетер: ${dirMap[f.wind_dir] || f.wind_dir} ${f.wind_speed} м/с\nВлажность: ${f.humidity}%\nДавление: ${f.pressure_mm} мм\n\n`;
+        let reply = `Погода в ${name} (Яндекс):\n\n${weatherEmoji[f.condition] || "🌡"} Сейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n💨 Ветер: ${dirMap[f.wind_dir] || f.wind_dir} ${f.wind_speed} м/с\n💧 Влажность: ${f.humidity}%\n📊 Давление: ${f.pressure_mm} мм\n\n`;
         const periodNames = { morning: "Утро", day: "День", evening: "Вечер", night: "Ночь" };
         for (const day of (d.forecasts || []).slice(0, 1)) {
           reply += `${day.date}:\n`;
-          for (const part of ["night", "morning", "day", "evening"]) {
+          for (const part of ["morning", "day", "evening", "night"]) {
             const p = day.parts?.[part];
             if (p) {
-              reply += `  ${periodNames[part]}: ${yandexWeatherMap[p.condition] || "—"}, ${p.temp_min}–${p.temp_max}°C, ветер ${dirMap[p.wind_dir] || p.wind_dir} ${p.wind_speed} м/с\n`;
+              reply += `${periodEmoji[part] || ""} ${periodNames[part]}: ${weatherEmoji[p.condition] || ""} ${yandexWeatherMap[p.condition] || "—"}, ${p.temp_min}–${p.temp_max}°C, 💨 ${dirMap[p.wind_dir] || p.wind_dir} ${p.wind_speed} м/с\n`;
             }
           }
         }
