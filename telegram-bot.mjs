@@ -244,6 +244,87 @@ ${memoryContext()}
 
 const writeQueue = new Map();
 
+async function analyzePhoto(photoBase64, prompt, maxTokens = 500) {
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+    body: JSON.stringify({
+      model: "gpt-4o-mini", max_tokens: maxTokens,
+      messages: [{ role: "user", content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}`, detail: "low" } }
+      ]}],
+    }),
+  });
+  const j = await r.json();
+  return j.choices?.[0]?.message?.content || "Не удалось обработать фото.";
+}
+
+async function editAndSendPhoto(chatId, photoBase64, caption) {
+  try {
+    const Jimp = (await import("jimp")).default;
+    const imgBuf = Buffer.from(photoBase64, "base64");
+    const image = await Jimp.read(imgBuf);
+    const w = image.bitmap.width;
+    const h = image.bitmap.height;
+
+    if (caption.match(/обведи|выдели|отметь|пометь|кружочк|красн|рамк/i)) {
+      const coords = await analyzePhoto(photoBase64, `На этом изображении нужно обвести объект красным. Верни ТОЛЬКО JSON в формате: {"x":процент_от_левого_края,"y":процент_от_верха,"w":процент_ширины,"h":процент_высоты}. Например {"x":30,"y":20,"w":40,"h":60}. Выбери самый заметный объект если не указано какой.`, 200);
+      try {
+        const match = coords.match(/\{[\s\S]*\}/);
+        if (match) {
+          const c = JSON.parse(match[0]);
+          const cx = Math.round(c.x * w / 100), cy = Math.round(c.y * h / 100), cr = Math.min(Math.round(c.w * w / 100), Math.round(c.h * h / 100));
+          for (let dx = -cr/2; dx < cr/2; dx += 0.5) {
+            for (let dy = -cr/2; dy < cr/2; dy += 0.5) {
+              if (dx*dx + dy*dy <= (cr/2)*(cr/2) + 50 && dx*dx + dy*dy >= (cr/2)*(cr/2) - 200) {
+                const px = Math.round(cx + dx), py = Math.round(cy + dy);
+                if (px >= 0 && px < w && py >= 0 && py < h) {
+                  image.setPixelColor(0xFF0000FF, px, py);
+                }
+              }
+            }
+          }
+          await tg("sendMessage", { chat_id: chatId, text: "Обвела выделенный объект:" });
+        }
+      } catch {}
+    }
+
+    if (caption.match(/чб|чёрно-бел|черно-бел|grayscale/i)) {
+      image.grayscale();
+      await tg("sendMessage", { chat_id: chatId, text: "Чёрно-белое:" });
+    }
+    if (caption.match(/ярче|яркость\+/i)) {
+      image.brightness(0.2);
+      await tg("sendMessage", { chat_id: chatId, text: "Яркость +20%:" });
+    }
+    if (caption.match(/темнее|яркость\-/i)) {
+      image.brightness(-0.2);
+      await tg("sendMessage", { chat_id: chatId, text: "Яркость -20%:" });
+    }
+    if (caption.match(/контраст/i)) {
+      image.contrast(0.3);
+      await tg("sendMessage", { chat_id: chatId, text: "Контраст +30%:" });
+    }
+    if (caption.match(/поверни/i)) {
+      image.rotate(90);
+      await tg("sendMessage", { chat_id: chatId, text: "Повернуто на 90°:" });
+    }
+    if (caption.match(/отзеркаль|отрази/i)) {
+      image.flip(true, false);
+      await tg("sendMessage", { chat_id: chatId, text: "Отзеркалено:" });
+    }
+
+    const edited = await image.getBuffer("image/jpeg", { quality: 85 });
+    const form = new FormData();
+    form.append("photo", new Blob([edited], { type: "image/jpeg" }), "edited.jpg");
+    await fetch(`${TG_API}/sendPhoto?chat_id=${chatId}`, { method: "POST", body: form });
+    return "Обработано";
+  } catch (e) {
+    log("Photo edit error: " + e.message);
+    return "Не удалось отредактировать фото. Возможно, формат не поддерживается.";
+  }
+}
+
 const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
 const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малооблачно", "cloudy": "Облачно", "overcast": "Пасмурно", "drizzle": "Морось", "light-rain": "Дождь", "rain": "Дождь", "heavy-rain": "Ливень", "showers": "Ливень", "wet-snow": "Мокрый снег", "light-snow": "Снег", "snow": "Снег", "hail": "Град", "thunderstorm": "Гроза", "thunderstorm-with-rain": "Гроза с дождём" };
 const weatherEmoji = { "clear": "☀️", "partly-cloudy": "🌤", "cloudy": "☁️", "overcast": "☁️", "drizzle": "🌦", "light-rain": "🌧", "rain": "🌧", "heavy-rain": "⛈", "showers": "🌧", "wet-snow": "🌨", "light-snow": "❄️", "snow": "❄️", "hail": "🌨", "thunderstorm": "⛈", "thunderstorm-with-rain": "⛈" };
@@ -529,31 +610,15 @@ async function poll() {
         const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
 
         if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
-          const r = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
-            body: JSON.stringify({
-              model: "gpt-4o-mini", max_tokens: 1000,
-              messages: [{ role: "user", content: [
-                { type: "text", text: "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй." },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
-              ]}],
-            }),
-          });
-          const j = await r.json();
-          reply = j.choices?.[0]?.message?.content || "Не удалось распознать.";
+          reply = await analyzePhoto(photoBase64, "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй.", 1000);
         } else if (caption.match(/^(опиши|что на фото|что изображено|опиши фото|что это)/i)) {
-          const r = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
-            body: JSON.stringify({
-              model: "gpt-4o-mini", max_tokens: 500,
-              messages: [{ role: "user", content: [
-                { type: "text", text: "Опиши кратко что на этом фото. На русском." },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
-              ]}],
-            }),
-          });
-          const j = await r.json();
-          reply = j.choices?.[0]?.message?.content || "Не удалось описать.";
+          reply = await analyzePhoto(photoBase64, "Опиши кратко что на этом фото. На русском.", 500);
+        } else if (caption.match(/(обведи|выдели|отметь|пометь|кружочк|красн|рамк)/i)) {
+          reply = await editAndSendPhoto(chatId, photoBase64, caption);
+          continue;
+        } else if (caption.match(/(чб|чёрно-бел|черно-бел|grayscale|ярче|темнее|яркость|контраст|поверни|отзеркаль)/i)) {
+          reply = await editAndSendPhoto(chatId, photoBase64, caption);
+          continue;
         } else if (caption) {
           const r = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
@@ -568,18 +633,7 @@ async function poll() {
           const j = await r.json();
           reply = j.choices?.[0]?.message?.content || "Не удалось обработать.";
         } else {
-          const r = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
-            body: JSON.stringify({
-              model: "gpt-4o-mini", max_tokens: 500,
-              messages: [{ role: "user", content: [
-                { type: "text", text: "Опиши подробно что на этом фото. Если там текст — прочитай его. На русском." },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}` } }
-              ]}],
-            }),
-          });
-          const j = await r.json();
-          reply = j.choices?.[0]?.message?.content || "Не удалось обработать фото.";
+          reply = await analyzePhoto(photoBase64, "Опиши подробно что на этом фото. Если там текст — прочитай его. На русском.", 500);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
