@@ -513,6 +513,7 @@ async function poll() {
 
       let text = msg.text?.trim();
       let voiceRequested = false;
+      let reply = "";
 
       if (!text && msg.photo) {
         const caption = msg.caption?.trim() || "";
@@ -593,8 +594,6 @@ async function poll() {
       if (!text) continue;
 
       log(`<- [${userId}] ${text.slice(0, 80)}`);
-
-      let reply = "";
 
       if (text === "/start") {
         await tg("sendMessage", { chat_id: chatId, text: `Привет! Я OpenCode (DeepSeek V4 Pro).\n\nЯ понимаю естественную речь:\n• «найди инфу про...» — найду и сохраню в Obsidian\n• «добавь в заметку ...» — запишу\n• «прочитай заметку ...» — покажу\n\nКоманды: /clear /model /vault` });
