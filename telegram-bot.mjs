@@ -246,27 +246,34 @@ const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малообл
 async function fetchWeather(lat, lon, name, yandexKey) {
   try {
     if (yandexKey) {
-      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=3`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
+      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=3&hours=false`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
       if (r.ok) {
         const d = await r.json();
         const f = d.fact;
         const cond = yandexWeatherMap[f.condition] || f.condition;
-        let reply = `Погода в ${name} (Яндекс):\n\nСейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\nВлажность: ${f.humidity}%\nВетер: ${f.wind_speed} м/с\nДавление: ${f.pressure_mm} мм\n\nПрогноз:\n`;
+        const dirMap = { "nw": "СЗ", "n": "С", "ne": "СВ", "e": "В", "se": "ЮВ", "s": "Ю", "sw": "ЮЗ", "w": "З", "c": "Штиль" };
+        let reply = `Погода в ${name} (Яндекс):\n\nСейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\nВетер: ${dirMap[f.wind_dir] || f.wind_dir} ${f.wind_speed} м/с\nВлажность: ${f.humidity}%\nДавление: ${f.pressure_mm} мм\n\n`;
+        const periodNames = { morning: "Утро", day: "День", evening: "Вечер", night: "Ночь" };
         for (const day of (d.forecasts || []).slice(0, 3)) {
-          const p = day.parts?.day_short || day.parts?.day || {};
-          reply += `${day.date}: ${p.temp_min}°C / ${p.temp_max}°C, ${yandexWeatherMap[p.condition] || p.condition || "—"}\n`;
+          reply += `${day.date}:\n`;
+          for (const part of ["night", "morning", "day", "evening"]) {
+            const p = day.parts?.[part];
+            if (p) {
+              reply += `  ${periodNames[part]}: ${yandexWeatherMap[p.condition] || "—"}, ${p.temp_min}–${p.temp_max}°C, ветер ${dirMap[p.wind_dir] || p.wind_dir} ${p.wind_speed} м/с\n`;
+            }
+          }
         }
         return reply;
       }
     }
   } catch {}
   // Open-Meteo fallback
-  const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+  const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=auto&forecast_days=3`);
   const wd = await w.json();
   const c = wd.current;
-  let reply = `Погода в ${name}:\n\nСейчас: ${weatherMap[c.weather_code] || "—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
+  let reply = `Погода в ${name}:\n\nСейчас: ${weatherMap[c.weather_code] || "—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВетер: ${c.wind_speed_10m} м/с\nВлажность: ${c.relative_humidity_2m}%\n\nПрогноз:\n`;
   for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
-    reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
+    reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%, ветер ${wd.daily.wind_speed_10m_max[i]} м/с\n`;
   }
   return reply;
 }
