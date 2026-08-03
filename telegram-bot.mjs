@@ -45,6 +45,7 @@ const DS_API = "https://api.deepseek.com/chat/completions";
 const context = new Map();
 const pendingResearch = new Map();
 const voicePref = new Map();
+const lastPhoto = new Map();
 let offset = 0;
 
 let useWebhook = false;
@@ -608,6 +609,7 @@ async function poll() {
         const photoUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileD.result.file_path}`;
         const photoData = await fetch(photoUrl);
         const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
+        lastPhoto.set(userId, photoBase64);
 
         if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
           reply = await analyzePhoto(photoBase64, "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй.", 1000);
@@ -915,6 +917,18 @@ async function poll() {
       if (text.startsWith("/vault list")) {
         const sub = text.slice(12).trim();
         reply = listVault(sub || "");
+      } else if (lastPhoto.has(userId) && text.match(/(обведи|выдели|отметь|пометь|кружочк|красн|рамк|чб|чёрно-бел|черно-бел|grayscale|ярче|темнее|яркость|контраст|поверни|отзеркаль)/i)) {
+        const editResult = await editAndSendPhoto(chatId, lastPhoto.get(userId), text);
+        if (editResult !== "Обработано") await tg("sendMessage", { chat_id: chatId, text: editResult });
+        continue;
+      } else if (lastPhoto.has(userId) && text.match(/^(прочитай|читай|распознай|ocr|опиши|что на фото|что изображено)/i)) {
+        reply = await analyzePhoto(lastPhoto.get(userId), text, 500);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      } else if (lastPhoto.has(userId) && text.length < 120 && !text.startsWith("/")) {
+        reply = await analyzePhoto(lastPhoto.get(userId), text, 800);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
       } else if (text.startsWith("/vault read")) {
         const sub = text.slice(12).trim();
         reply = readVault(sub);
