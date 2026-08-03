@@ -35,6 +35,7 @@ const GIST_ID = process.env.GIST_ID || config.gistId || "";
 const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeatherKey || "";
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
 const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
+const BRAVE_SEARCH_KEY = process.env.BRAVE_SEARCH_KEY || config.braveSearchKey || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
 
 if (!TELEGRAM_TOKEN) { log("TELEGRAM_TOKEN не задан."); process.exit(1); }
@@ -244,6 +245,22 @@ ${memoryContext()}
 }
 
 const writeQueue = new Map();
+
+async function webSearch(query) {
+  if (!BRAVE_SEARCH_KEY) return "Поиск не настроен. Нужен Brave Search API ключ.";
+  try {
+    const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&search_lang=ru`, {
+      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
+    });
+    const d = await r.json();
+    if (!d.web?.results?.length) return "Ничего не найдено по запросу: " + query;
+    let reply = `Результаты поиска: «${query}»\n\n`;
+    d.web.results.forEach((r, i) => {
+      reply += `${i + 1}. ${r.title}\n${r.description?.slice(0, 150) || ""}\n${r.url}\n\n`;
+    });
+    return reply.slice(0, 3800);
+  } catch (e) { return "Ошибка поиска: " + e.message; }
+}
 
 async function analyzePhoto(photoBase64, prompt, maxTokens = 500) {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -909,6 +926,17 @@ async function poll() {
           }
         } catch (e) {
           reply = "Не удалось получить погоду. Попробуй позже.";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
+        const query = text.replace(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)\s*/i, "").trim();
+        if (!query) { reply = "Что искать? Пример: найди в интернете DJI Mavic 3 цена"; }
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          reply = await webSearch(query);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
