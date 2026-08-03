@@ -203,6 +203,8 @@ async function deepseekChat(userId, text, vaultContext) {
 
   const system = `Ты — Race, женский ИИ-ассистент в Telegram. Отвечай кратко, на русском, дружелюбно.
 
+Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" })} (МСК, UTC+3).
+
 Obsidian vault: ${OBSIDIAN_VAULT}
 Структура vault:
 ${vaultSummary()}
@@ -668,14 +670,14 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/^(сколько времени|который час|время|какое время)/i) || text === "время") {
+      if (text.match(/^(сколько времени|который час|какое время|точное время)/i)) {
         const now = mskTime();
         reply = `Сейчас ${now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (МСК)\n${now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
 
-      if (text.match(/^(какое сегодня число|какая дата|дата|число)/i) || text === "дата") {
+      if (text.match(/^(какое сегодня число|какая дата|какое число|сегодня число)/i)) {
         const now = mskTime();
         reply = `Сегодня ${now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
         await tg("sendMessage", { chat_id: chatId, text: reply });
