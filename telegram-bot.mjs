@@ -668,6 +668,20 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(сколько времени|который час|время|какое время)/i) || text === "время") {
+        const now = mskTime();
+        reply = `Сейчас ${now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (МСК)\n${now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(какое сегодня число|какая дата|дата|число)/i) || text === "дата") {
+        const now = mskTime();
+        reply = `Сегодня ${now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^(напомни мне|напомни|поставь напоминание|установи напоминание)/i) && text.match(/через|завтра|в \d|послезавтра/)) {
         const reminder = parseReminder(text);
         if (reminder) {
@@ -690,12 +704,11 @@ async function poll() {
           const num = parseInt(match[1]), unit = match[2], label = (match[3] || "таймер").trim();
           const mul = { минут: 60, минуту: 60, минуты: 60, мин: 60, секунд: 1, секунду: 1, секунды: 1, сек: 1, час: 3600, часа: 3600, часов: 3600 };
           const sec = num * (mul[unit] || 60);
-          const now = new Date();
-          const t = new Date(now.getTime() + sec * 1000);
+          const target = new Date(mskTime().getTime() + sec * 1000);
           if (!botMemory.reminders) botMemory.reminders = [];
-          botMemory.reminders.push({ time: t.toISOString(), message: `Таймер сработал: ${label}`, chatId: defaultChatId, created: now.toISOString(), sound: "siren" });
+          botMemory.reminders.push({ time: fromMSK(target).toISOString(), message: `Таймер сработал: ${label}`, chatId: defaultChatId, created: new Date().toISOString(), sound: "siren" });
           await saveMemory();
-          reply = `Таймер на ${num} ${unit}. Сработает в ${mskTime(t).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (МСК)`;
+          reply = `Таймер на ${num} ${unit}. Сработает в ${target.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (МСК)`;
         } else {
           reply = "Примеры:\n• таймер 5 минут\n• таймер на 30 минут обед\n• таймер 10 секунд";
         }
