@@ -246,7 +246,7 @@ const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малообл
 async function fetchWeather(lat, lon, name, yandexKey) {
   try {
     if (yandexKey) {
-      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=3&hours=false`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
+      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=1&hours=false`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
       if (r.ok) {
         const d = await r.json();
         const f = d.fact;
@@ -254,7 +254,7 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         const dirMap = { "nw": "СЗ", "n": "С", "ne": "СВ", "e": "В", "se": "ЮВ", "s": "Ю", "sw": "ЮЗ", "w": "З", "c": "Штиль" };
         let reply = `Погода в ${name} (Яндекс):\n\nСейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\nВетер: ${dirMap[f.wind_dir] || f.wind_dir} ${f.wind_speed} м/с\nВлажность: ${f.humidity}%\nДавление: ${f.pressure_mm} мм\n\n`;
         const periodNames = { morning: "Утро", day: "День", evening: "Вечер", night: "Ночь" };
-        for (const day of (d.forecasts || []).slice(0, 3)) {
+        for (const day of (d.forecasts || []).slice(0, 1)) {
           reply += `${day.date}:\n`;
           for (const part of ["night", "morning", "day", "evening"]) {
             const p = day.parts?.[part];
