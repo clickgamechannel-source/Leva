@@ -564,6 +564,24 @@ async function poll() {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         let city = text.replace(/^(погода|какая погода|прогноз погоды|weather)\s*/i, "").trim();
         if (!city || city.length < 2) city = "Луганск";
+        const knownLocations = {
+          "александровка днр": { name: "Александровка, ДНР", lat: 48.70, lon: 37.60 },
+          "александровка": { name: "Александровка, ДНР", lat: 48.70, lon: 37.60 },
+          "луганск": { name: "Луганск", lat: 48.57, lon: 39.31 },
+        };
+        const kl = knownLocations[city.toLowerCase()];
+        if (kl) {
+          const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${kl.lat}&longitude=${kl.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+          const wd = await w.json();
+          const c = wd.current;
+          const weatherMap = { 0: "Ясно", 1: "Малооблачно", 2: "Облачно", 3: "Пасмурно", 45: "Туман", 51: "Морось", 61: "Дождь", 71: "Снег", 80: "Ливень", 95: "Гроза" };
+          reply = `Погода в ${kl.name}:\n\nСейчас: ${weatherMap[c.weather_code]||"—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВлажность: ${c.relative_humidity_2m}%\nВетер: ${c.wind_speed_10m} м/с\n\nПрогноз:\n`;
+          for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
+            reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%\n`;
+          }
+          await tg("sendMessage", { chat_id: chatId, text: reply });
+          continue;
+        }
         try {
           const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru`);
           const gd = await geo.json();
