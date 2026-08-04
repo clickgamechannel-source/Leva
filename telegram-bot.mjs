@@ -264,9 +264,7 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race. Отвечай кратко, естественно, не повторяйся. Если не можешь помочь — предложи варианты.
-
-Когда пользователь спрашивает о чём-то — я автоматически ищу релевантные заметки в его Obsidian и передаю тебе. Используй их для ответа. Если заметок нет — отвечай из своих знаний или предложи поиск в интернете словами «поищи в интернете».
+  const system = `Ты — Race. Отвечай кратко, естественно. Если не можешь помочь — предложи варианты. Не упоминай команды /vault и /research — пользователь к ним не имеет доступа.
 
 Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
@@ -1091,15 +1089,11 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/(?:обсидиан|obsidian|заметк| vault |найди в заметк|посмотри в заметк|что в заметк|что у меня в заметк|какие заметк|мои заметк)/i)) {
+      if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        const q = text.replace(/(?:обсидиан|obsidian|заметк| vault |найди в заметк|посмотри в заметк|что в заметк|что у меня в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
-        if (q && q.length > 2) {
-          reply = await searchObsidian(q);
-        } else {
-          reply = await listObsidianNotes();
-        }
-        await tg("sendMessage", { chat_id: chatId, text: reply });
+        const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
+        const result = q && q.length > 2 ? await searchObsidian(q) : await listObsidianNotes();
+        await tg("sendMessage", { chat_id: chatId, text: result });
         continue;
       }
 
