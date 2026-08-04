@@ -1078,9 +1078,28 @@ async function poll() {
       }
 
       if (text.startsWith("/vault list")) {
-        const sub = text.slice(12).trim();
-        reply = listVault(sub || "");
-      } else if (lastPhoto.has(userId) && text.match(/(обведи|выдели|отметь|пометь|кружочк|красн|рамк|чб|чёрно-бел|черно-бел|grayscale|ярче|темнее|яркость|контраст|поверни|отзеркаль)/i)) {
+        reply = "Облачное хранилище:\n📝 Заметки: " + (botMemory.notes?.length || 0) + "\n💰 Расходы: " + (botMemory.expenses?.length || 0) + "\n📋 Новое: " + (botMemory.newItems?.length || 0) + "\n🧠 Факты: " + (botMemory.facts?.length || 0);
+      } else if (text.startsWith("/vault read")) {
+        const t = text.slice(12).trim();
+        if (t.match(/расход/i)) reply = (botMemory.expenses || []).map(e => e.raw).join("\n") || "Нет";
+        else if (t.match(/нов|new/i)) reply = (botMemory.newItems || []).map(n => n.item).join("\n") || "Нет";
+        else if (t.match(/замет|note/i)) reply = (botMemory.notes || []).map(n => n.content.slice(0, 200)).join("\n\n") || "Нет";
+        else if (t.match(/факт/i)) reply = (botMemory.facts || []).join("\n") || "Нет";
+        else reply = "Что прочитать: расходы / новое / заметки / факты";
+      } else if (text.startsWith("/vault search")) {
+        const q = text.slice(14).trim().toLowerCase();
+        if (!q) { reply = "Что искать?"; }
+        else {
+          const r = [];
+          for (const n of (botMemory.notes || [])) if (n.content.toLowerCase().includes(q)) r.push(n.path);
+          for (const f of (botMemory.facts || [])) if (f.toLowerCase().includes(q)) r.push("Факт: "+f);
+          reply = r.length ? r.slice(0, 10).join("\n") : "Не найдено.";
+        }
+      } else if (text.startsWith("/vault write")) {
+        const t = text.slice(13).trim();
+        if (!t) { reply = "Что записать?"; }
+        else { if (!botMemory.facts) botMemory.facts = []; botMemory.facts.push(t); await saveMemory(); reply = "Записано: "+t; }
+      } else if (text.startsWith("/vault")) {
         const editResult = await editAndSendPhoto(chatId, lastPhoto.get(userId), text);
         if (editResult !== "Обработано") await tg("sendMessage", { chat_id: chatId, text: editResult });
         continue;
@@ -1265,6 +1284,7 @@ function splitMessage(text) {
 }
 
 log("Бот запущен. deepseek-v4-pro + Obsidian vault + research + voice + cloud memory");
+tg("sendMessage", { chat_id: defaultChatId, text: "Обновление выполнено! Бот запущен и готов к работе." }).catch(() => {});
 
 // HTTP-сервер для Render (health check)
 createServer((req, res) => { res.writeHead(200); res.end("OK"); }).listen(process.env.PORT || 3000);
