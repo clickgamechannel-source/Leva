@@ -1257,33 +1257,36 @@ async function poll() {
         if (botMemory.learnings.length > 50) botMemory.learnings = botMemory.learnings.slice(-50);
       }
 
-      // сохраняем диалог в Obsidian через GitHub API
+      // сохраняем диалог в Obsidian через GitHub API (в фоне, не ждём)
       const today = new Date().toISOString().slice(0, 10);
       const dialEntry = `\n\n**${new Date().toLocaleTimeString("ru-RU")}**\n> ${text.slice(0, 500)}\n\n${reply.slice(0, 500)}\n---`;
-      try {
-        const encPath = encodeURIComponent(`Диалоги/${today}.md`);
-        let sha = null;
-        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
-          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-        });
-        if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
-        let existing = "# Диалоги\n";
-        if (sha) {
-          try {
-            const raw = await fetch(`https://raw.githubusercontent.com/${OBSIDIAN_REPO}/main/${encodeURIComponent(`Диалоги/${today}.md`)}`);
-            if (raw.ok) existing = await raw.text();
-          } catch {}
-        }
-        const newContent = existing + dialEntry;
-        const updateBody = { message: `Диалог ${today}`, content: Buffer.from(newContent).toString("base64") };
-        if (sha) updateBody.sha = sha;
-        const putR = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-          body: JSON.stringify(updateBody),
-        });
-        if (!putR.ok) log("Ошибка сохранения диалога: " + putR.status);
-      } catch (e) { log("Ошибка сохранения диалога: " + e.message); }
+      const saveDialogue = async () => {
+        try {
+          const encPath = encodeURIComponent(`Диалоги/${today}.md`);
+          let sha = null;
+          const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
+            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+          });
+          if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
+          let existing = "# Диалоги\n";
+          if (sha) {
+            try {
+              const raw = await fetch(`https://raw.githubusercontent.com/${OBSIDIAN_REPO}/main/${encodeURIComponent(`Диалоги/${today}.md`)}`);
+              if (raw.ok) existing = await raw.text();
+            } catch {}
+          }
+          const newContent = existing + dialEntry;
+          const updateBody = { message: `Диалог ${today}`, content: Buffer.from(newContent).toString("base64") };
+          if (sha) updateBody.sha = sha;
+          const putR = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
+            method: "PUT",
+            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+            body: JSON.stringify(updateBody),
+          });
+          if (!putR.ok) log("Ошибка сохранения диалога: " + putR.status);
+        } catch (e) { log("Ошибка сохранения диалога: " + e.message); }
+      };
+      saveDialogue(); // fire and forget - не ждём
 
       if (dialogueCounter % 3 === 0) await saveMemory();
 
