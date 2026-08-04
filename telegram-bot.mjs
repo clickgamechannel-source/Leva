@@ -254,15 +254,10 @@ async function tg(method, body) {
   return res.json();
 }
 
-async function deepseekChat(userId, text, vaultContext) {
+async function deepseekChat(userId, text) {
   if (!context.has(userId)) context.set(userId, []);
   const messages = context.get(userId);
-
-  let userMsg = text;
-  const vaultCtx = notesSearch(text) || memoryContext();
-  if (vaultCtx) userMsg = `${text}\n\n[${vaultCtx}\n]`;
-
-  messages.push({ role: "user", content: userMsg });
+  messages.push({ role: "user", content: text });
 
   const system = `Ты — Race, дружелюбная девушка-ассистент. Отвечай кратко, естественно, не повторяйся. Если не можешь помочь — предложи 2-3 варианта решения.
 
@@ -273,7 +268,7 @@ async function deepseekChat(userId, text, vaultContext) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-24)],
+      messages: [{ role: "system", content: system }, ...messages.slice(-12)],
       max_tokens: 2000,
     }),
   });
