@@ -1010,7 +1010,7 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/^добавь\s+(.+)/i)) {
+      if (text.match(/^добавь\s+(?!в заметку|в обсидиан)(.+)/i)) {
         const item = text.replace(/^добавь\s+/i, "").trim();
         if (!botMemory.newItems) botMemory.newItems = [];
         botMemory.newItems.push({ item, date: new Date().toISOString() });
