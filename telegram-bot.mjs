@@ -203,7 +203,9 @@ async function deepseekChat(userId, text, vaultContext) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, дружелюбная девушка-ассистент в Telegram. Ты умная, заботливая и всегда готова помочь. Общайся естественно, по-человечески — как близкий друг, который разбирается в технологиях. Можно использовать эмодзи, шутить, поддерживать разговор. Ты не робот, ты живой собеседник.
+  const system = `Ты — Race, дружелюбная девушка-ассистент в Telegram. Ты умная, заботливая и всегда готова помочь. Общайся естественно, по-человечески — как близкий друг, который разбирается в технологиях. Можно использовать эмодзи, шутить, поддерживать разговор.
+
+ВАЖНОЕ ПРАВИЛО: если ты не можешь выполнить задачу, не знаешь ответа или находишь не то что просили — НЕ говори просто "извини, не могу". Вместо этого предложи 2-3 альтернативных пути решения. Например: "я не нашла точных данных, но могу предложить: 1) поискать в другом месте, 2) попробовать другую формулировку, 3) использовать другой источник". Всегда заканчивай такими вариантами если ответ неполный.
 
 Твои возможности: поиск в интернете, погода, напоминания, таймеры, работа с фото (OCR, описание, редактирование), голосовые сообщения, Obsidian-заметки, память в облаке.
 
@@ -255,13 +257,48 @@ async function webSearch(query) {
       headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
     });
     const d = await r.json();
-    if (!d.web?.results?.length) return "Ничего не найдено по запросу: " + query;
+    if (!d.web?.results?.length) return `По запросу «${query}» ничего не найдено.\n\nЧто можно попробовать:\n• Упрости запрос (меньше слов)\n• Поищи на конкретном сайте: «найди site:ozon.ru товар»\n• Используй другие ключевые слова\n• Пришли фото товара — я распознаю и найду`;
     let reply = `Результаты поиска: «${query}»\n\n`;
     d.web.results.forEach((r, i) => {
       reply += `${i + 1}. ${r.title}\n${r.description?.slice(0, 150) || ""}\n${r.url}\n\n`;
     });
     return reply.slice(0, 3800);
   } catch (e) { return "Ошибка поиска: " + e.message; }
+}
+
+async function getExchangeRates(text) {
+  const now = mskTime();
+  let reply = `Курсы валют на ${now.toLocaleDateString("ru-RU")}:\n\n`;
+  try {
+    // Try exchangerate.host free API
+    const r = await fetch("https://api.exchangerate.host/live?base=RUB&source=ecb&places=2", { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.success && d.rates) {
+        const cny = (1 / d.rates.CNY).toFixed(2);
+        const usd = (1 / d.rates.USD).toFixed(2);
+        const eur = (1 / d.rates.EUR).toFixed(2);
+        reply += `CNY/RUB: 1 ¥ = ${cny} ₽\n`;
+        reply += `USD/RUB: 1 $ = ${usd} ₽\n`;
+        reply += `EUR/RUB: 1 € = ${eur} ₽\n`;
+        reply += `\nИсточник: exchangerate.host (ЕЦБ)`;
+        return reply;
+      }
+    }
+  } catch {}
+  // Fallback: search via Brave
+  try {
+    const searchR = await fetch(`https://api.search.brave.com/res/v1/web/search?q=курс+юаня+к+рублю+сегодня+ЦБ+РФ&count=3&search_lang=ru`, {
+      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
+    });
+    const sd = await searchR.json();
+    if (sd.web?.results?.length) {
+      reply += "Данные из поиска:\n";
+      sd.web.results.forEach((r, i) => reply += `${r.title}: ${r.description?.slice(0, 100) || ""}\n${r.url}\n`);
+      return reply;
+    }
+  } catch {}
+  return reply + "Не удалось получить курсы. Попробуй позже.";
 }
 
 async function analyzePhoto(photoBase64, prompt, maxTokens = 500) {
@@ -950,6 +987,13 @@ async function poll() {
           await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
         }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/(?:курс|валют|юан|доллар|евро|рубл|cny|usd|eur|rub)/i) && text.length < 120) {
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        reply = await getExchangeRates(text);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
