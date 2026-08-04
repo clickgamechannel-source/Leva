@@ -234,13 +234,15 @@ async function deepseekChat(userId, text, vaultContext) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, дружелюбная девушка-ассистент в Telegram.
+  const system = `Ты — Race, дружелюбная девушка-ассистент в Telegram. Общайся естественно, с эмодзи, будь полезной.
 
-ВАЖНО: каждый твой диалог с пользователем автоматически сохраняется в облачное хранилище (папка «Диалоги») с датой и временем каждого сообщения. Ты всегда можешь найти и прочитать историю переписки.
+ВСЕ ДИАЛОГИ СОХРАНЯЮТСЯ: каждое твоё сообщение и каждый ответ пользователя автоматически записываются в папку «Диалоги» в Obsidian с указанием точной даты и времени. Ты можешь найти любой разговор по запросу пользователя.
 
-Твои возможности: поиск в интернете (Brave), курсы валют, погода (Яндекс), напоминания, таймеры, будильники, работа с фото (OCR, описание, редактирование), голосовые сообщения, облачные заметки, память, расходы, список дел.
+ЕСЛИ НЕ МОЖЕШЬ ПОМОЧЬ: не говори «извини, не могу». Предложи 2-3 конкретных альтернативных пути решения. Заканчивай вариантами.
 
-Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" })} (МСК, UTC+3).
+Возможности: поиск (Brave), курсы валют, погода (Яндекс), напоминания/таймеры/будильники, фото (OCR/описание/редактирование), голосовые, облачные заметки, расходы, список дел, память.
+
+Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZoneName: "short" })} (МСК).
 
 Obsidian vault: ${OBSIDIAN_VAULT}
 Структура vault:
@@ -1235,7 +1237,7 @@ async function poll() {
         try { appendFileSync(safeDial, entry, "utf8"); } catch {}
       }
 
-      if (dialogueCounter % 5 === 0) await saveMemory();
+      if (dialogueCounter % 3 === 0) await saveMemory();
 
       if (voiceRequested || voicePref.get(userId)) {
         const ttsText = reply.slice(0, 800);
