@@ -149,6 +149,13 @@ function searchVault(term) {
   return results.map((r) => `▪ **${r.path}**:${r.line} — ${r.text}`).join("\n");
 }
 
+function learningsContext() {
+  if (!botMemory.learnings || !botMemory.learnings.length) return "";
+  let ctx = "ЧЕМУ Я НАУЧИЛАСЬ НА ОШИБКАХ:\n";
+  for (const l of botMemory.learnings.slice(-10)) ctx += "- " + l.correction + "\n";
+  return ctx;
+}
+
 function vaultSummary() {
   try {
     const dirs = readdirSync(OBSIDIAN_VAULT, { withFileTypes: true })
@@ -224,6 +231,7 @@ Obsidian vault: ${OBSIDIAN_VAULT}
 ${vaultSummary()}
 
 ${memoryContext()}
+${learningsContext()}
 
 Ты можешь работать с vault через команды:
 /vault list [путь] — список файлов
@@ -309,14 +317,14 @@ async function getExchangeRates(text) {
   return reply + "Не удалось получить курсы. Попробуй позже.";
 }
 
-async function analyzePhoto(photoBase64, prompt, maxTokens = 500) {
+async function analyzePhoto(photoBase64, prompt, maxTokens = 500, highDetail = false) {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
     body: JSON.stringify({
       model: "gpt-4o-mini", max_tokens: maxTokens,
       messages: [{ role: "user", content: [
         { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}`, detail: "low" } }
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}`, detail: highDetail ? "high" : "auto" } }
       ]}],
     }),
   });
@@ -505,7 +513,7 @@ async function textToVoice(text, voice = "nova") {
   }
 }
 
-let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova", timezone: 3 }, dialogues: [], reminders: [] };
+let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova", timezone: 3 }, dialogues: [], reminders: [], learnings: [] };
 const defaultChatId = 7649644701;
 const TZ_OFFSET = (botMemory.prefs?.timezone || 3) * 60 * 60 * 1000; // MSK = UTC+3
 
@@ -531,6 +539,7 @@ async function loadMemory() {
       botMemory.facts = loaded.facts || [];
       botMemory.prefs = loaded.prefs || { bot_name: "Race", bot_gender: "female", voice: "nova" };
       botMemory.reminders = loaded.reminders || [];
+      botMemory.learnings = loaded.learnings || [];
     }
     log("Память загружена: " + (botMemory.facts?.length || 0) + " фактов");
   } catch (e) {
@@ -677,7 +686,7 @@ async function poll() {
 
         if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
           const marketplace = caption.match(/озон|ozon/i) ? "site:ozon.ru" : caption.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
-          const ocrText = await analyzePhoto(photoBase64, "На этом фото товар. Если на нём есть артикул, штрихкод, название товара или модель — выведи только эту информацию. Без лишних слов.", 300);
+          const ocrText = await analyzePhoto(photoBase64, "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель, любые цифры и буквы которые могут быть артикулом. Без лишних слов — только данные.", 300, true);
           const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
           reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
           if (marketplace) {
@@ -686,9 +695,9 @@ async function poll() {
             reply += await webSearch(searchQuery);
           }
         } else if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
-          reply = await analyzePhoto(photoBase64, "Распознай и выведи ВЕСЬ текст с этого изображения. Только текст, без комментариев. Если на фото QR-код или штрихкод — расшифруй.", 1000);
+          reply = await analyzePhoto(photoBase64, "Внимательно прочитай ВЕСЬ текст на этом изображении. Выведи только текст, точно как он написан. Если есть QR-код или штрихкод — расшифруй. Если есть цифры — выведи их.", 1000, true);
         } else if (caption.match(/^(опиши|что на фото|что изображено|опиши фото|что это)/i)) {
-          reply = await analyzePhoto(photoBase64, "Опиши кратко что на этом фото. На русском.", 500);
+          reply = await analyzePhoto(photoBase64, "Опиши максимально подробно что на этом фото: предметы, люди, текст, цвета, обстановку. На русском.", 500, true);
         } else if (caption.match(/(обведи|выдели|отметь|пометь|кружочк|красн|рамк)/i)) {
           reply = await editAndSendPhoto(chatId, photoBase64, caption);
           continue;
@@ -698,7 +707,7 @@ async function poll() {
         } else if (caption) {
           reply = await analyzePhoto(photoBase64, caption, 800);
         } else {
-          reply = await analyzePhoto(photoBase64, "Опиши подробно что на этом фото. Если там текст — прочитай его. На русском.", 500);
+          reply = await analyzePhoto(photoBase64, "Опиши максимально подробно что на этом фото: все предметы, люди, текст, цвета, обстановку. Если есть текст — прочитай его. На русском.", 500, true);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
@@ -1017,7 +1026,7 @@ async function poll() {
         continue;
       } else if (lastPhoto.has(userId) && text.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries|что за товар)/i)) {
         const marketplace = text.match(/озон|ozon/i) ? "site:ozon.ru" : text.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
-        const ocrText = await analyzePhoto(lastPhoto.get(userId), "На этом фото товар. Выведи артикул, штрихкод, название, модель — только саму информацию. Без лишних слов.", 300);
+        const ocrText = await analyzePhoto(lastPhoto.get(userId), "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель. Только данные, без лишних слов.", 300, true);
         const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || text.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
         reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
         reply += await webSearch(`${searchQuery} ${marketplace}`);
@@ -1096,6 +1105,12 @@ async function poll() {
 
       botMemory.dialogues.push({ time: new Date().toISOString(), user: text.slice(0, 500), bot: reply.slice(0, 500) });
       dialogueCounter++;
+
+      if (text.match(/(?:нет|не так|неправильно|ошибк|не верно|неверно|исправь|поправь)/i) && text.length > 10) {
+        if (!botMemory.learnings) botMemory.learnings = [];
+        botMemory.learnings.push({ time: new Date().toISOString(), correction: text.slice(0, 300), context: reply.slice(0, 200) });
+        if (botMemory.learnings.length > 50) botMemory.learnings = botMemory.learnings.slice(-50);
+      }
 
       // сохраняем диалог в Obsidian (ежедневный файл)
       const today = new Date().toISOString().slice(0, 10);
