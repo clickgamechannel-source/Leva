@@ -156,6 +156,16 @@ function learningsContext() {
   return ctx;
 }
 
+function notesSearch(query) {
+  if (!botMemory.notes?.length) return "";
+  const q = query.toLowerCase();
+  const results = botMemory.notes.filter(n => n.content.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
+  if (!results.length) return "";
+  let ctx = "ЗАМЕТКИ ИЗ OBSIDIAN (облачная копия):\n";
+  for (const n of results.slice(-5)) ctx += "- " + n.path + ": " + n.content.slice(0, 300) + "\n";
+  return ctx;
+}
+
 function vaultSummary() {
   try {
     const dirs = readdirSync(OBSIDIAN_VAULT, { withFileTypes: true })
@@ -195,6 +205,11 @@ async function researchAndSave(chatId, userId, topic) {
     mkdirSync(noteDir, { recursive: true });
   }
   writeVault(notePath, note);
+  // Сохраняем заметку также в облачную память
+  if (!botMemory.notes) botMemory.notes = [];
+  botMemory.notes.push({ path: notePath, content: reply.slice(0, 2000), time: new Date().toISOString() });
+  if (botMemory.notes.length > 100) botMemory.notes = botMemory.notes.slice(-100);
+  await saveMemory();
 
   return `Заметка создана: ${notePath}\n\n` + reply.slice(0, 1800);
 }
@@ -214,7 +229,8 @@ async function deepseekChat(userId, text, vaultContext) {
   const messages = context.get(userId);
 
   let userMsg = text;
-  if (vaultContext) userMsg = `${text}\n\n[Контекст из Obsidian vault:\n${vaultContext}\n]`;
+  const vaultCtx = notesSearch(text) || memoryContext();
+  if (vaultCtx) userMsg = `${text}\n\n[${vaultCtx}\n]`;
 
   messages.push({ role: "user", content: userMsg });
 
@@ -540,8 +556,11 @@ async function loadMemory() {
       botMemory.prefs = loaded.prefs || { bot_name: "Race", bot_gender: "female", voice: "nova" };
       botMemory.reminders = loaded.reminders || [];
       botMemory.learnings = loaded.learnings || [];
+      botMemory.notes = loaded.notes || [];
+      botMemory.expenses = loaded.expenses || [];
+      botMemory.newItems = loaded.newItems || [];
     }
-    log("Память загружена: " + (botMemory.facts?.length || 0) + " фактов");
+    log("Память загружена: " + (botMemory.facts?.length || 0) + " фактов, " + (botMemory.notes?.length || 0) + " заметок");
   } catch (e) {
     log("Ошибка загрузки памяти: " + e.message);
   }
@@ -684,7 +703,16 @@ async function poll() {
         const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
         lastPhoto.set(userId, photoBase64);
 
-        if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
+        if (caption.match(/(?:расход|трат|финанс|бюджет|отч[её]т)/i)) {
+          const expenseText = await analyzePhoto(photoBase64, "На этом фото список транзакций или расходов. Внимательно прочитай ВСЕ строки: дату, описание, сумму. Выведи в формате: дата | описание | сумма. Каждую транзакцию с новой строки.", 1500, true);
+          if (!botMemory.expenses) botMemory.expenses = [];
+          const lines = expenseText.split("\n").filter(l => l.match(/\d/));
+          for (const line of lines) {
+            botMemory.expenses.push({ raw: line.trim(), date: new Date().toISOString().slice(0, 10), time: new Date().toISOString() });
+          }
+          await saveMemory();
+          reply = `Распознала расходы (${lines.length} транзакций):\n${expenseText.slice(0, 1500)}\n\nСохранено в облако. Скажи «покажи отчёт за месяц» для сводки.`;
+        } else if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
           const marketplace = caption.match(/озон|ozon/i) ? "site:ozon.ru" : caption.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
           const ocrText = await analyzePhoto(photoBase64, "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель, любые цифры и буквы которые могут быть артикулом. Без лишних слов — только данные.", 300, true);
           const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
@@ -978,9 +1006,41 @@ async function poll() {
         const kl = knownLocations[city.toLowerCase()];
         if (kl) {
           reply = await fetchWeather(kl.lat, kl.lon, kl.name, YANDEX_WEATHER_KEY);
-          await tg("sendMessage", { chat_id: chatId, text: reply });
-          continue;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^добавь\s+(.+)/i)) {
+        const item = text.replace(/^добавь\s+/i, "").trim();
+        if (!botMemory.newItems) botMemory.newItems = [];
+        botMemory.newItems.push({ item, date: new Date().toISOString() });
+        await saveMemory();
+        reply = `Добавила в «Что нового»: ${item}`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(что нового|список дел|что добавить|покажи список)/i)) {
+        if (!botMemory.newItems?.length) {
+          reply = "Список «Что нового» пуст. Скажи «добавь ...» чтобы внести.";
+        } else {
+          reply = "Что нового:\n";
+          botMemory.newItems.forEach((n, i) => reply += `${i + 1}. ${n.item} (${new Date(n.date).toLocaleDateString("ru-RU")})\n`);
         }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^убери из нового\s+(\d+)/i)) {
+        const idx = parseInt(text.match(/\d+/)[0]);
+        if (idx > 0 && idx <= (botMemory.newItems?.length || 0)) {
+          const removed = botMemory.newItems.splice(idx - 1, 1)[0];
+          await saveMemory();
+          reply = `Убрала: ${removed.item}`;
+        } else { reply = "Какой номер убрать? «что нового» — покажет список."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
         try {
           const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru`);
           const gd = await geo.json();
@@ -1030,6 +1090,39 @@ async function poll() {
         const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || text.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
         reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
         reply += await webSearch(`${searchQuery} ${marketplace}`);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      } else if (text.match(/(?:расход|трат|финанс|бюджет|отч[её]т|анализ расход)/i)) {
+        if (lastPhoto.has(userId)) {
+          const expenseText = await analyzePhoto(lastPhoto.get(userId), "На этом фото список транзакций или расходов. Внимательно прочитай ВСЕ строки: дату, описание, сумму. Выведи в формате: дата | описание | сумма. Каждую транзакцию с новой строки.", 1500, true);
+          if (!botMemory.expenses) botMemory.expenses = [];
+          const lines = expenseText.split("\n").filter(l => l.match(/\d/));
+          for (const line of lines) {
+            botMemory.expenses.push({ raw: line.trim(), date: new Date().toISOString().slice(0, 10), time: new Date().toISOString() });
+          }
+          await saveMemory();
+          reply = `Распознала расходы (${lines.length} транзакций):\n${expenseText.slice(0, 1500)}\n\nСохранено в облако. Для отчёта скажи «покажи отчёт за месяц».`;
+        } else if (text.match(/покажи отч[её]т|собери отч[её]т|отч[её]т за месяц/i)) {
+          if (!botMemory.expenses?.length) {
+            reply = "Нет сохранённых расходов. Пришли фото с транзакциями и напиши «расходы».";
+          } else {
+            const byMonth = {};
+            for (const e of botMemory.expenses) {
+              const m = e.date.slice(0, 7);
+              if (!byMonth[m]) byMonth[m] = [];
+              byMonth[m].push(e);
+            }
+            reply = "Отчёт по расходам:\n\n";
+            for (const [month, items] of Object.entries(byMonth).sort().reverse()) {
+              reply += `${month}:\n`;
+              for (const item of items) reply += `  ${item.raw}\n`;
+              reply += "\n";
+            }
+            reply += "\nЧтобы добавить расходы — пришли фото с транзакциями.";
+          }
+        } else {
+          reply = "Для работы с расходами:\n• Пришли фото транзакций\n• Напиши «расходы» чтобы распознать\n• «покажи отчёт за месяц» — сводка";
+        }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       } else if (lastPhoto.has(userId) && text.match(/^(прочитай|читай|распознай|ocr|опиши|что на фото|что изображено)/i)) {
