@@ -37,6 +37,7 @@ const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
 const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
 const BRAVE_SEARCH_KEY = process.env.BRAVE_SEARCH_KEY || config.braveSearchKey || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
+const OBSIDIAN_REPO = process.env.OBSIDIAN_REPO || config.obsidianRepo || "clickgamechannel-source/Leva";
 
 if (!TELEGRAM_TOKEN) { log("TELEGRAM_TOKEN не задан."); process.exit(1); }
 if (!DEEPSEEK_KEY) { log("DEEPSEEK_API_KEY не задан."); process.exit(1); }
@@ -84,10 +85,39 @@ if (!useWebhook) {
   }
 }
 
-function safePath(sub) {
-  const target = resolve(OBSIDIAN_VAULT, sub.replace(/\\/g, "/"));
-  if (!target.startsWith(resolve(OBSIDIAN_VAULT))) return null;
-  return target;
+async function readObsidianFile(sub) {
+  if (!GITHUB_KEY) return "Obsidian Git не настроен.";
+  try {
+    const r = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
+      headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+    });
+    if (!r.ok) return "Файл не найден: " + sub;
+    const d = await r.json();
+    const content = Buffer.from(d.content, "base64").toString("utf8");
+    return content.length > 3500 ? content.slice(0, 3500) + "\n..." : content;
+  } catch (e) { return "Ошибка: " + e.message; }
+}
+
+async function writeObsidianFile(sub, content) {
+  if (!GITHUB_KEY) return "Obsidian Git не настроен.";
+  try {
+    let sha = null;
+    try {
+      const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
+        headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      });
+      if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
+    } catch {}
+    const body = { message: "Race: " + sub, content: Buffer.from(content).toString("base64") };
+    if (sha) body.sha = sha;
+    const r = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    return d.content ? `Записано: ${sub}` : "Ошибка: " + (d.message || "");
+  } catch (e) { return "Ошибка: " + e.message; }
 }
 
 function listVault(sub = "") {
@@ -204,7 +234,7 @@ async function researchAndSave(chatId, userId, topic) {
   if (!existsSync(noteDir)) {
     mkdirSync(noteDir, { recursive: true });
   }
-  writeVault(notePath, note);
+  writeObsidianFile(notePath, note).catch(() => {});
   // Сохраняем заметку также в облачную память
   if (!botMemory.notes) botMemory.notes = [];
   botMemory.notes.push({ path: notePath, content: reply.slice(0, 2000), time: new Date().toISOString() });
@@ -1087,7 +1117,8 @@ async function poll() {
         else if (t.match(/нов|new/i)) reply = (botMemory.newItems || []).map(n => n.item).join("\n") || "Нет";
         else if (t.match(/замет|note/i)) reply = (botMemory.notes || []).map(n => n.content.slice(0, 200)).join("\n\n") || "Нет";
         else if (t.match(/факт/i)) reply = (botMemory.facts || []).join("\n") || "Нет";
-        else reply = "Что прочитать: расходы / новое / заметки / факты";
+        else if (t.endsWith(".md")) { await tg("sendChatAction", { chat_id: chatId, action: "typing" }); reply = await readObsidianFile(t); }
+        else reply = "Что прочитать: расходы / новое / заметки / факты / путь-к-файлу.md";
       } else if (text.startsWith("/vault search")) {
         const q = text.slice(14).trim().toLowerCase();
         if (!q) { reply = "Что искать?"; }
@@ -1226,16 +1257,29 @@ async function poll() {
         if (botMemory.learnings.length > 50) botMemory.learnings = botMemory.learnings.slice(-50);
       }
 
-      // сохраняем диалог в Obsidian (ежедневный файл)
+      // сохраняем диалог в Obsidian через GitHub API
       const today = new Date().toISOString().slice(0, 10);
-      const dialFile = `Диалоги/${today}.md`;
-      const safeDial = safePath(dialFile);
-      if (safeDial) {
-        const dir = resolve(OBSIDIAN_VAULT, "Диалоги");
-        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-        const entry = `\n\n**${new Date().toLocaleTimeString("ru-RU")}**\n> ${text.slice(0, 500)}\n\n${reply.slice(0, 500)}\n---`;
-        try { appendFileSync(safeDial, entry, "utf8"); } catch {}
-      }
+      const dialEntry = `\n\n**${new Date().toLocaleTimeString("ru-RU")}**\n> ${text.slice(0, 500)}\n\n${reply.slice(0, 500)}\n---`;
+      try {
+        let sha = null;
+        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
+          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        });
+        if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
+        let existing = "";
+        if (sha) {
+          existing = Buffer.from((await (await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
+            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github.raw", "X-GitHub-Api-Version": "2022-11-28" },
+          })).text()), "utf8");
+        }
+        const updateBody = { message: "Диалог " + today, content: Buffer.from((existing || "# Диалоги\n") + dialEntry).toString("base64") };
+        if (sha) updateBody.sha = sha;
+        fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+          body: JSON.stringify(updateBody),
+        }).catch(() => {});
+      } catch {}
 
       if (dialogueCounter % 3 === 0) await saveMemory();
 
