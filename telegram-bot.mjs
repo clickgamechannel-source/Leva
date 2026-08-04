@@ -1286,7 +1286,7 @@ async function poll() {
           if (!putR.ok) log("Ошибка сохранения диалога: " + putR.status);
         } catch (e) { log("Ошибка сохранения диалога: " + e.message); }
       };
-      saveDialogue(); // fire and forget - не ждём
+      saveDialogue().catch(e => log("Ошибка сохранения: " + e.message)); // фоном, с логом ошибок
 
       if (dialogueCounter % 3 === 0) await saveMemory();
 
