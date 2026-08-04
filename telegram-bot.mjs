@@ -257,11 +257,16 @@ async function tg(method, body) {
 async function deepseekChat(userId, text) {
   if (!context.has(userId)) context.set(userId, []);
   const messages = context.get(userId);
-  messages.push({ role: "user", content: text });
 
-  const system = `Ты — Race, дружелюбная девушка-ассистент. Отвечай кратко, не повторяйся. Если не можешь помочь — предложи варианты.
+  let userMsg = text;
+  const notesCtx = notesSearch(text);
+  if (notesCtx) userMsg = `${text}\n\n[Найдено в Obsidian:\n${notesCtx}\nИспользуй эту информацию для ответа.]`;
 
-Ты можешь САМА искать информацию в интернете и читать/писать заметки. Если тебе нужны данные — скажи об этом, я помогу найти. Не жди команд — предлагай поиск когда это уместно.
+  messages.push({ role: "user", content: userMsg });
+
+  const system = `Ты — Race. Отвечай кратко, естественно, не повторяйся. Если не можешь помочь — предложи варианты.
+
+Когда пользователь спрашивает о чём-то — я автоматически ищу релевантные заметки в его Obsidian и передаю тебе. Используй их для ответа. Если заметок нет — отвечай из своих знаний или предложи поиск в интернете словами «поищи в интернете».
 
 Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
