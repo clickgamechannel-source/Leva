@@ -49,6 +49,14 @@ const voicePref = new Map();
 const lastPhoto = new Map();
 let offset = 0;
 
+function addToContext(userId, userMsg, botReply) {
+  if (!context.has(userId)) context.set(userId, []);
+  const msgs = context.get(userId);
+  msgs.push({ role: "user", content: userMsg });
+  msgs.push({ role: "assistant", content: botReply.slice(0, 500) });
+  if (msgs.length > 50) context.set(userId, msgs.slice(-50));
+}
+
 let useWebhook = false;
 let webhookInfo = null;
 
@@ -986,6 +994,7 @@ async function poll() {
         else {
           await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
+          addToContext(userId, text, reply);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
@@ -994,6 +1003,7 @@ async function poll() {
       if (text.match(/(?:курс|валют|юан|доллар|евро|рубл|cny|usd|eur|rub)/i) && text.length < 120) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         reply = await getExchangeRates(text);
+        addToContext(userId, text, reply);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
