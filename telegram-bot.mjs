@@ -287,6 +287,31 @@ async function deepseekChat(userId, text) {
 const writeQueue = new Map();
 
 async function webSearch(query) {
+
+async function searchObsidian(query) {
+  const results = [];
+  const q = query.toLowerCase();
+  for (const n of (botMemory.notes || [])) {
+    if (n.content.toLowerCase().includes(q)) results.push(`📝 ${n.path}: ${n.content.slice(0, 200)}`);
+  }
+  for (const f of (botMemory.facts || [])) {
+    if (f.toLowerCase().includes(q)) results.push(`🧠 ${f}`);
+  }
+  for (const d of (botMemory.dialogues || [])) {
+    if ((d.user+d.bot).toLowerCase().includes(q)) results.push(`💬 ${d.time?.slice(0,10)||""}: ${d.user.slice(0,100)}`);
+  }
+  if (results.length) return "Нашла в Obsidian:\n\n" + results.slice(0, 10).join("\n\n");
+  return `В Obsidian ничего не найдено по «${query}». Могу поискать в интернете — скажи.`;
+}
+
+async function listObsidianNotes() {
+  const parts = [];
+  if (botMemory.notes?.length) parts.push(`📝 Заметки (${botMemory.notes.length}):\n` + botMemory.notes.map(n => `- ${n.path}`).join("\n"));
+  if (botMemory.facts?.length) parts.push(`🧠 Факты (${botMemory.facts.length}):\n` + botMemory.facts.map(f => `- ${f}`).join("\n"));
+  if (botMemory.expenses?.length) parts.push(`💰 Расходы (${botMemory.expenses.length} транзакций)`);
+  if (botMemory.newItems?.length) parts.push(`📋 Список дел (${botMemory.newItems.length}):\n` + botMemory.newItems.map(n => `- ${n.item}`).join("\n"));
+  return parts.length ? "Твой Obsidian:\n\n" + parts.join("\n\n") : "Obsidian пуст. Скажи «запомни...» чтобы добавить.";
+}
   if (!BRAVE_SEARCH_KEY) return "Поиск не настроен. Нужен Brave Search API ключ.";
   try {
     const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&search_lang=ru`, {
@@ -1061,7 +1086,17 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
+      if (text.match(/(?:обсидиан|obsidian|заметк| vault |найди в заметк|посмотри в заметк|что в заметк|что у меня в заметк|какие заметк|мои заметк)/i)) {
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        const q = text.replace(/(?:обсидиан|obsidian|заметк| vault |найди в заметк|посмотри в заметк|что в заметк|что у меня в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
+        if (q && q.length > 2) {
+          reply = await searchObsidian(q);
+        } else {
+          reply = await listObsidianNotes();
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
         const query = text.replace(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)\s*/i, "").trim();
         if (!query) { reply = "Что искать? Пример: найди в интернете DJI Mavic 3 цена"; }
         else {
