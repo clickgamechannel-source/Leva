@@ -1261,25 +1261,29 @@ async function poll() {
       const today = new Date().toISOString().slice(0, 10);
       const dialEntry = `\n\n**${new Date().toLocaleTimeString("ru-RU")}**\n> ${text.slice(0, 500)}\n\n${reply.slice(0, 500)}\n---`;
       try {
+        const encPath = encodeURIComponent(`Диалоги/${today}.md`);
         let sha = null;
-        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
+        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
           headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
         });
         if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
-        let existing = "";
+        let existing = "# Диалоги\n";
         if (sha) {
-          existing = Buffer.from((await (await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
-            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github.raw", "X-GitHub-Api-Version": "2022-11-28" },
-          })).text()), "utf8");
+          try {
+            const raw = await fetch(`https://raw.githubusercontent.com/${OBSIDIAN_REPO}/main/${encodeURIComponent(`Диалоги/${today}.md`)}`);
+            if (raw.ok) existing = await raw.text();
+          } catch {}
         }
-        const updateBody = { message: "Диалог " + today, content: Buffer.from((existing || "# Диалоги\n") + dialEntry).toString("base64") };
+        const newContent = existing + dialEntry;
+        const updateBody = { message: `Диалог ${today}`, content: Buffer.from(newContent).toString("base64") };
         if (sha) updateBody.sha = sha;
-        fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(`Диалоги/${today}.md`)}`, {
+        const putR = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
           body: JSON.stringify(updateBody),
-        }).catch(() => {});
-      } catch {}
+        });
+        if (!putR.ok) log("Ошибка сохранения диалога: " + putR.status);
+      } catch (e) { log("Ошибка сохранения диалога: " + e.message); }
 
       if (dialogueCounter % 3 === 0) await saveMemory();
 
