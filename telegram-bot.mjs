@@ -1096,6 +1096,7 @@ async function poll() {
       }
 
       if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|поищи в памяти|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|память|что ты помнишь|что в памяти|истори|диалог|о чём мы говорили)/i)) {
+        await saveMemory(); // сохраняем перед поиском
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
         const result = q && q.length > 2 ? await searchObsidian(q) : await listObsidianNotes();
@@ -1290,7 +1291,7 @@ async function poll() {
       };
       saveDialogue().catch(e => log("Ошибка сохранения: " + e.message)); // фоном, с логом ошибок
 
-      if (dialogueCounter % 2 === 0) await saveMemory();
+      await saveMemory(); // сохраняем каждый диалог
 
       if (voiceRequested || voicePref.get(userId)) {
         const ttsText = reply.slice(0, 800);
