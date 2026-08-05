@@ -46,6 +46,7 @@ const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeathe
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
 const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
 const BRAVE_SEARCH_KEY = process.env.BRAVE_SEARCH_KEY || config.braveSearchKey || "";
+const TAVILY_KEY = process.env.TAVILY_KEY || config.tavilyKey || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
 const OBSIDIAN_REPO = process.env.OBSIDIAN_REPO || config.obsidianRepo || "clickgamechannel-source/Leva";
 
@@ -325,6 +326,34 @@ setInterval(async () => {
 }, 300000);
 
 async function webSearch(query) {
+  // Пробуем Tavily (AI-поиск)
+  if (TAVILY_KEY) {
+    try {
+      const r = await fetch("https://api.tavily.com/search", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TAVILY_KEY}` },
+        body: JSON.stringify({ query, search_depth: "advanced", max_results: 5, include_answer: true }),
+      });
+      const d = await r.json();
+      if (d.results?.length) {
+        let reply = d.answer ? `Ответ: ${d.answer}\n\n` : "";
+        d.results.forEach((r, i) => reply += `${i + 1}. ${r.title}\n${r.content?.slice(0, 200) || ""}\n${r.url}\n\n`);
+        return reply.slice(0, 3800);
+      }
+    } catch {}
+  }
+  // Fallback: Brave Search
+  if (!BRAVE_SEARCH_KEY) return "Поиск не настроен. Нужен API ключ.";
+  try {
+    const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&search_lang=ru`, {
+      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
+    });
+    const d = await r.json();
+    if (!d.web?.results?.length) return "Ничего не найдено. Попробуй другие слова.";
+    let reply = "";
+    d.web.results.forEach((r, i) => reply += `${i + 1}. ${r.title}\n${r.description?.slice(0, 150) || ""}\n${r.url}\n\n`);
+    return reply.slice(0, 3800);
+  } catch (e) { return "Ошибка поиска."; }
+}
 
 async function searchObsidian(query) {
   const results = [];
