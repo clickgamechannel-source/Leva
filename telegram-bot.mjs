@@ -323,6 +323,57 @@ async function searchObsidian(query) {
   return `В памяти ничего не найдено по «${query}».`;
 }
 
+async function aiSearchDialogues(query) {
+  if (!OPENAI_KEY) return null;
+  try {
+    // Получаем embedding для запроса
+    const embR = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: query }),
+    });
+    const embD = await embR.json();
+    const queryEmb = embD.data?.[0]?.embedding;
+    if (!queryEmb) return null;
+
+    // Индексируем диалоги если ещё не
+    if (!botMemory.dialogueEmbeddings) botMemory.dialogueEmbeddings = [];
+    const dialogues = botMemory.dialogues || [];
+    const startIdx = botMemory.dialogueEmbeddings.length;
+
+    for (let i = startIdx; i < dialogues.length && i < startIdx + 5; i++) {
+      const text = (dialogues[i].user + " " + dialogues[i].bot).slice(0, 500);
+      const r = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+      });
+      const d = await r.json();
+      if (d.data?.[0]?.embedding) {
+        botMemory.dialogueEmbeddings.push({ idx: i, emb: d.data[0].embedding });
+      }
+    }
+    await saveMemory();
+
+    // Косинусное сходство
+    function cosine(a, b) {
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+      return dot / (Math.sqrt(na) * Math.sqrt(nb));
+    }
+
+    const scored = botMemory.dialogueEmbeddings.map(e => ({ ...e, score: cosine(queryEmb, e.emb) }));
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored.slice(0, 5).filter(s => s.score > 0.3);
+
+    if (!top.length) return null;
+    let reply = "Смысловой поиск по диалогам:\n\n";
+    for (const s of top) {
+      const d = dialogues[s.idx];
+      if (d) reply += `💬 ${d.time?.slice(0,16)||""} (совпадение ${(s.score*100).toFixed(0)}%):\n> ${d.user.slice(0,150)}\n→ ${d.bot.slice(0,150)}\n\n`;
+    }
+    return reply;
+  } catch (e) { log("AI search error: " + e.message); return null; }
+}
+
 async function listObsidianNotes() {
   const parts = [];
   if (botMemory.notes?.length) parts.push(`📝 Заметки (${botMemory.notes.length}):\n` + botMemory.notes.map(n => `- ${n.path}`).join("\n"));
@@ -1281,10 +1332,15 @@ async function poll() {
       }
 
       if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|поищи в памяти|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|память|что ты помнишь|что в памяти|истори|диалог|о чём мы говорили)/i)) {
-        await saveMemory(); // сохраняем перед поиском
+        await saveMemory();
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
-        const result = q && q.length > 1 ? await searchObsidian(q) : await listObsidianNotes();
+        let result = q && q.length > 1 ? await searchObsidian(q) : await listObsidianNotes();
+        // Если обычный поиск не нашёл — пробуем AI поиск
+        if (result.includes("ничего не найдено") && q.length > 3) {
+          const aiResult = await aiSearchDialogues(q);
+          if (aiResult) result = aiResult;
+        }
         await tg("sendMessage", { chat_id: chatId, text: result });
         continue;
       }
