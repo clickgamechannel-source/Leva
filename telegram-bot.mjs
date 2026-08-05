@@ -275,18 +275,14 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race. Отвечай кратко, по-человечески.
-
-Ты имеешь доступ к памяти пользователя: все прошлые диалоги, заметки, факты и расходы сохранены. Когда пользователь спрашивает о прошлых разговорах или информации из памяти — скажи ему использовать фразу «поищи в памяти» или «что в obsidian», чтобы я нашла нужное.
-
-Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race, помощница. Отвечай кратко, один раз, не повторяйся. Если не знаешь — скажи честно и предложи варианты. Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-12)],
+      messages: [{ role: "system", content: system }, ...messages.slice(-6)],
       max_tokens: 2000,
     }),
   });
@@ -296,7 +292,7 @@ async function deepseekChat(userId, text) {
   if (!reply) reply = data.choices?.[0]?.message?.reasoning_content;
   if (!reply) reply = "Ошибка ответа от DeepSeek.";
   messages.push({ role: "assistant", content: reply });
-  if (messages.length > 50) context.set(userId, messages.slice(-50));
+  if (messages.length > 30) context.set(userId, messages.slice(-30));
   return reply;
 }
 
@@ -1582,7 +1578,6 @@ async function poll() {
       if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
-        addToContext(userId, text, reply);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
