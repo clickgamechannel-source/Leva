@@ -7,7 +7,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let googleCal = null;
 try {
-  googleCal = JSON.parse(readFileSync(resolve(__dirname, "google-calendar.json"), "utf8"));
+  const gcEnv = process.env.GOOGLE_CALENDAR_JSON || "";
+  if (gcEnv) {
+    googleCal = JSON.parse(gcEnv);
+  } else {
+    googleCal = JSON.parse(readFileSync(resolve(__dirname, "google-calendar.json"), "utf8"));
+  }
 } catch {}
 
 const CONFIG_FILE = resolve(__dirname, "bot-config.json");
