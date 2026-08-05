@@ -301,10 +301,14 @@ async function searchObsidian(query) {
     if (f.toLowerCase().includes(q)) results.push(`🧠 ${f}`);
   }
   for (const d of (botMemory.dialogues || [])) {
-    if ((d.user+d.bot).toLowerCase().includes(q)) results.push(`💬 ${d.time?.slice(0,10)||""}: ${d.user.slice(0,100)}`);
+    const full = (d.user + " " + d.bot).toLowerCase();
+    if (full.includes(q)) results.push(`💬 ${d.time?.slice(0,16)||""}: ${d.user.slice(0,100)} → ${d.bot.slice(0,100)}`);
   }
-  if (results.length) return "Нашла в Obsidian:\n\n" + results.slice(0, 10).join("\n\n");
-  return `В Obsidian ничего не найдено по «${query}». Могу поискать в интернете — скажи.`;
+  for (const e of (botMemory.expenses || [])) {
+    if (e.raw.toLowerCase().includes(q)) results.push(`💰 ${e.raw}`);
+  }
+  if (results.length) return `Нашла в памяти (${results.length} совпадений):\n\n` + results.slice(0, 12).join("\n\n") + (results.length > 12 ? `\n\n...и ещё ${results.length - 12}` : "");
+  return `В памяти ничего не найдено по «${query}».`;
 }
 
 async function listObsidianNotes() {
@@ -1284,7 +1288,7 @@ async function poll() {
       };
       saveDialogue().catch(e => log("Ошибка сохранения: " + e.message)); // фоном, с логом ошибок
 
-      if (dialogueCounter % 3 === 0) await saveMemory();
+      if (dialogueCounter % 2 === 0) await saveMemory();
 
       if (voiceRequested || voicePref.get(userId)) {
         const ttsText = reply.slice(0, 800);
