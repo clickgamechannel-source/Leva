@@ -286,15 +286,16 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, помощница. Отвечай кратко, только на русском языке, не повторяйся. Если не знаешь — скажи честно и предложи варианты. Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race. Отвечай коротко, ТОЛЬКО на русском. НЕ повторяй предыдущие ответы. Каждый ответ — новый. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-6)],
+      messages: [{ role: "system", content: system }, ...messages.slice(-4)],
       max_tokens: 2000,
+      temperature: 0.7,
     }),
   });
 
