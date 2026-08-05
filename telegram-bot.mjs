@@ -1106,17 +1106,22 @@ async function poll() {
 
       // Дата-запросы: "вчера", "сегодня", "позавчера"
       if (text.match(/^(?:вчера|сегодня|позавчера|что было)/i) || (text.match(/(?:вчера|сегодня|позавчера)/i) && text.length < 40)) {
-        await saveMemory();
         const now = mskTime();
         let targetDate = now.toISOString().slice(0, 10);
         if (text.match(/вчера/i)) targetDate = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
         else if (text.match(/позавчера/i)) targetDate = new Date(now.getTime() - 172800000).toISOString().slice(0, 10);
-        const dialogs = (botMemory.dialogues || []).filter(d => d.time?.startsWith(targetDate));
-        if (dialogs.length) {
-          reply = `Диалоги за ${targetDate}:\n\n` + dialogs.map(d => `💬 ${d.time?.slice(11,16)}: ${d.user.slice(0,100)}`).join("\n") + `\n\nВсего ${dialogs.length} сообщений.`;
-        } else {
-          reply = `За ${targetDate} диалогов не найдено.`;
-        }
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        // Читаем диалоги из GitHub (напрямую, не из памяти)
+        try {
+          const rawR = await fetch(`https://raw.githubusercontent.com/clickgamechannel-source/Leva/main/${encodeURIComponent(`Диалоги/${targetDate}.md`)}`);
+          if (rawR.ok) {
+            const content = await rawR.text();
+            reply = `Диалоги за ${targetDate}:\n\n${content.slice(0, 3500)}`;
+            if (content.length > 3500) reply += `\n\n...показано 3500 из ${content.length} символов`;
+          } else {
+            reply = `За ${targetDate} диалогов не найдено.`;
+          }
+        } catch { reply = "Не удалось загрузить диалоги."; }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
