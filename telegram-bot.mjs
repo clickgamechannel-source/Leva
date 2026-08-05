@@ -604,46 +604,37 @@ async function downloadVoice(fileId) {
 async function transcribeVoice(audioBuffer) {
   try {
     const form = new FormData();
-    const blob = new Blob([audioBuffer], { type: "audio/ogg" });
-    form.append("file", blob, "voice.ogg");
+    form.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "voice.ogg");
     form.append("model", "whisper-1");
     form.append("language", "ru");
+    form.append("response_format", "text");
 
-    // пробуем OpenAI, если ключ есть
+    // OpenAI Whisper
     if (OPENAI_KEY) {
-      const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${OPENAI_KEY}` },
-        body: form,
-      });
-      if (r.ok) {
-        const d = await r.json();
-        return d.text || null;
-      }
+      try {
+        const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+          method: "POST", headers: { Authorization: `Bearer ${OPENAI_KEY}` }, body: form,
+        });
+        if (r.ok) { const text = await r.text(); if (text?.trim()) return text.trim(); }
+      } catch {}
     }
 
-    // fallback на Groq
+    // Groq Whisper (быстрее, иногда точнее)
     if (GROQ_KEY) {
-      const form2 = new FormData();
-      const blob2 = new Blob([audioBuffer], { type: "audio/ogg" });
-      form2.append("file", blob2, "voice.ogg");
-      form2.append("model", "whisper-large-v3");
-      form2.append("language", "ru");
-      const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${GROQ_KEY}` },
-        body: form2,
-      });
-      if (r.ok) {
-        const d = await r.json();
-        return d.text || null;
-      }
+      try {
+        const f2 = new FormData();
+        f2.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "voice.ogg");
+        f2.append("model", "whisper-large-v3-turbo");
+        f2.append("language", "ru");
+        const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST", headers: { Authorization: `Bearer ${GROQ_KEY}` }, body: f2,
+        });
+        if (r.ok) { const d = await r.json(); if (d.text?.trim()) return d.text.trim(); }
+      } catch {}
     }
+
     return null;
-  } catch (e) {
-    log("STT error: " + e.message);
-    return null;
-  }
+  } catch (e) { log("STT error: " + e.message); return null; }
 }
 
 async function textToVoice(text, voice = "nova") {
