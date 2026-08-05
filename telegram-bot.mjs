@@ -433,37 +433,31 @@ async function listObsidianNotes() {
 
 async function getExchangeRates(text) {
   const now = mskTime();
-  let reply = `Курсы валют на ${now.toLocaleDateString("ru-RU")}:\n\n`;
+  const searchQuery = text.match(/юан|CNY|cny/i) ? "курс юаня к рублю ЦБ РФ сегодня" : text.match(/доллар|USD|usd/i) ? "курс доллара к рублю ЦБ РФ сегодня" : text.match(/евро|EUR|eur/i) ? "курс евро к рублю ЦБ РФ сегодня" : "курс валют ЦБ РФ сегодня";
   try {
-    // Try exchangerate.host free API
-    const r = await fetch("https://api.exchangerate.host/live?base=RUB&source=ecb&places=2", { signal: AbortSignal.timeout(8000) });
-    if (r.ok) {
+    if (TAVILY_KEY) {
+      const r = await fetch("https://api.tavily.com/search", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TAVILY_KEY}` },
+        body: JSON.stringify({ query: searchQuery, search_depth: "basic", max_results: 1, include_answer: true }),
+      });
       const d = await r.json();
-      if (d.success && d.rates) {
-        const cny = (1 / d.rates.CNY).toFixed(2);
-        const usd = (1 / d.rates.USD).toFixed(2);
-        const eur = (1 / d.rates.EUR).toFixed(2);
-        reply += `CNY/RUB: 1 ¥ = ${cny} ₽\n`;
-        reply += `USD/RUB: 1 $ = ${usd} ₽\n`;
-        reply += `EUR/RUB: 1 € = ${eur} ₽\n`;
-        reply += `\nИсточник: exchangerate.host (ЕЦБ)`;
-        return reply;
+      if (d.answer) return `Курсы на ${now.toLocaleDateString("ru-RU")}:\n\n${d.answer}`;
+      if (d.results?.[0]?.url) {
+        try {
+          const extractUrl = "https://r.jina.ai/" + d.results[0].url;
+          const content = await fetch(extractUrl, { headers: { Accept: "text/markdown" } });
+          const text = await content.text();
+          const aiR = await fetch(DS_API, {
+            method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
+            body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 150, messages: [{ role: "user", content: `Найди актуальный курс валюты в тексте. Выведи: валюта — курс. Если несколько валют — все. Только цифры:\n${text.slice(0, 3000)}` }] }),
+          });
+          const aiD = await aiR.json();
+          return `Курсы на ${now.toLocaleDateString("ru-RU")}:\n\n${aiD.choices?.[0]?.message?.content || "не определено"}\n\nИсточник: ${d.results[0].url}`;
+        } catch {}
       }
     }
   } catch {}
-  // Fallback: search via Brave
-  try {
-    const searchR = await fetch(`https://api.search.brave.com/res/v1/web/search?q=курс+юаня+к+рублю+сегодня+ЦБ+РФ&count=3&search_lang=ru`, {
-      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
-    });
-    const sd = await searchR.json();
-    if (sd.web?.results?.length) {
-      reply += "Данные из поиска:\n";
-      sd.web.results.forEach((r, i) => reply += `${r.title}: ${r.description?.slice(0, 100) || ""}\n${r.url}\n`);
-      return reply;
-    }
-  } catch {}
-  return reply + "Не удалось получить курсы. Попробуй позже.";
+  return (await webSearch(searchQuery)) || "Не удалось получить курсы.";
 }
 
 async function analyzePhoto(photoBase64, prompt, maxTokens = 500, highDetail = false) {
