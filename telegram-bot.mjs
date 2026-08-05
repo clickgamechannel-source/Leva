@@ -301,6 +301,29 @@ async function deepseekChat(userId, text) {
 
 const writeQueue = new Map();
 
+// Утренний брифинг в 8:00 МСК
+setInterval(async () => {
+  const now = mskTime();
+  if (now.getHours() !== 8 || now.getMinutes() > 5) return;
+  let briefing = "🌅 Доброе утро!\n\n☀️ " + await fetchWeather(48.77, 37.62, "Рай-Александровка", YANDEX_WEATHER_KEY).catch(()=>"");
+  briefing += "\n💱 " + await getExchangeRates("").catch(()=>"");
+  const today = now.toISOString().slice(0,10);
+  const todayEv = (botMemory.events||[]).filter(e => e.date.startsWith(today));
+  if (todayEv.length) { briefing += "\n📅 Сегодня:"; todayEv.forEach(e => briefing += `\n  ${new Date(e.date).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — ${e.description}`); }
+  if (botMemory.newItems?.length) briefing += `\n\n📋 Дел: ${botMemory.newItems.length}`;
+  tg("sendMessage", { chat_id: defaultChatId, text: briefing }).catch(()=>{});
+}, 300000);
+
+// Автобэкап каждое воскресенье в 23:00
+setInterval(async () => {
+  const now = mskTime();
+  if (now.getDay() !== 0 || now.getHours() !== 23 || now.getMinutes() > 5) return;
+  const backup = JSON.stringify(botMemory);
+  const ts = now.toISOString().slice(0,10);
+  writeObsidianFile(`Бэкапы/backup-${ts}.json`, backup).catch(()=>{});
+  tg("sendMessage", { chat_id: defaultChatId, text: "💾 Бэкап сохранён" }).catch(()=>{});
+}, 300000);
+
 async function webSearch(query) {
 
 async function searchObsidian(query) {
@@ -1326,6 +1349,65 @@ async function poll() {
           const dashPath = `Дашборды/расходы.md`;
           writeObsidianFile(dashPath, dash).catch(()=>{});
           reply = dash.slice(0, 3500) + `\n\n📊 Сохранено в Obsidian: ${dashPath}`;
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^переведи\s+(.+)/i)) {
+        const rest = text.replace(/^переведи\s+/i, "");
+        const langMatch = rest.match(/^(?:на\s+)?(английский|english|русский|russian|китайский|chinese|немецкий|german|испанский|spanish)/i);
+        if (langMatch) {
+          const lang = langMatch[1].toLowerCase();
+          const target = lang.match(/англ|english/i) ? "en" : lang.match(/кит|chinese/i) ? "zh" : lang.match(/нем|german/i) ? "de" : lang.match(/исп|spanish/i) ? "es" : "ru";
+          const textToTranslate = rest.replace(langMatch[0], "").trim();
+          if (textToTranslate) {
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=` + encodeURIComponent(textToTranslate);
+            try {
+              const tr = await fetch(url);
+              const td = await tr.json();
+              reply = td[0]?.map(p => p[0]).join("") || "Не удалось перевести.";
+            } catch { reply = "Ошибка перевода."; }
+          } else { reply = "Что перевести? Пример: переведи на английский привет как дела"; }
+        } else { reply = "На какой язык? Пример: переведи на английский привет"; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^заметка[:\s]+(.+)/i) || text.match(/^(?:заметка|note)[:\s]+(.+)/i)) {
+        const note = text.replace(/^(?:заметка|note)[:\s]*/i, "").trim();
+        if (!botMemory.notes) botMemory.notes = [];
+        botMemory.notes.push({ path: `Заметки/голосовая-${new Date().toISOString().slice(0,16).replace(/:/g,"-")}.md`, content: note, time: new Date().toISOString() });
+        await saveMemory();
+        reply = "Заметка сохранена: " + note.slice(0, 100);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/(?:повтор|каждый|еженедельн|ежемесячн|каждую неделю|каждый месяц|каждый день)/i) && text.match(/(?:добавь встречу|добавь событие|новая встреча|создай встречу)/i)) {
+        const event = parseEvent(text);
+        if (event) {
+          if (text.match(/кажд(?:ый|ую)\s+(?:день|понедельник|вторник|сред|четверг|пятниц|суббот|воскресенье)/i)) {
+            const daysMap = { понедельник: 1, вторник: 2, среда: 3, среду: 3, четверг: 4, пятница: 5, пятницу: 5, суббота: 6, субботу: 6, воскресенье: 0 };
+            let targetDay = -1;
+            for (const [k, v] of Object.entries(daysMap)) { if (text.toLowerCase().includes(k)) { targetDay = v; break; } }
+            if (targetDay >= 0) {
+              const d = new Date(event.date);
+              while (d.getDay() !== targetDay) d.setDate(d.getDate() + 1);
+              event.date = d.toISOString();
+              event.repeat = "weekly";
+            }
+            if (text.match(/каждый день/i)) event.repeat = "daily";
+            if (text.match(/каждый месяц/i)) event.repeat = "monthly";
+          }
+          if (!botMemory.events) botMemory.events = [];
+          botMemory.events.push(event);
+          botMemory.events.sort((a,b) => a.date.localeCompare(b.date));
+          await saveMemory();
+          const d = new Date(event.date);
+          reply = `Повторяющаяся встреча: ${d.toLocaleDateString("ru-RU")} в ${d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — «${event.description}»`;
+        } else {
+          reply = "Пример: добавь встречу каждый понедельник в 10:00 планёрка";
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
