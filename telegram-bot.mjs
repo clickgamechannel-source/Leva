@@ -1099,8 +1099,25 @@ async function poll() {
         await saveMemory(); // сохраняем перед поиском
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
-        const result = q && q.length > 2 ? await searchObsidian(q) : await listObsidianNotes();
+        const result = q && q.length > 1 ? await searchObsidian(q) : await listObsidianNotes();
         await tg("sendMessage", { chat_id: chatId, text: result });
+        continue;
+      }
+
+      // Дата-запросы: "вчера", "сегодня", "позавчера"
+      if (text.match(/^(?:вчера|сегодня|позавчера|что было)/i) || (text.match(/(?:вчера|сегодня|позавчера)/i) && text.length < 40)) {
+        await saveMemory();
+        const now = mskTime();
+        let targetDate = now.toISOString().slice(0, 10);
+        if (text.match(/вчера/i)) targetDate = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
+        else if (text.match(/позавчера/i)) targetDate = new Date(now.getTime() - 172800000).toISOString().slice(0, 10);
+        const dialogs = (botMemory.dialogues || []).filter(d => d.time?.startsWith(targetDate));
+        if (dialogs.length) {
+          reply = `Диалоги за ${targetDate}:\n\n` + dialogs.map(d => `💬 ${d.time?.slice(11,16)}: ${d.user.slice(0,100)}`).join("\n") + `\n\nВсего ${dialogs.length} сообщений.`;
+        } else {
+          reply = `За ${targetDate} диалогов не найдено.`;
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
 
