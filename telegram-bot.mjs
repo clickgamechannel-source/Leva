@@ -681,6 +681,8 @@ async function loadMemory() {
       botMemory.notes = loaded.notes || [];
       botMemory.expenses = loaded.expenses || [];
       botMemory.newItems = loaded.newItems || [];
+      botMemory.habits = loaded.habits || {};
+      botMemory.shopping = loaded.shopping || [];
     }
     log("Память загружена: " + (botMemory.facts?.length || 0) + " фактов, " + (botMemory.notes?.length || 0) + " заметок");
   } catch (e) {
@@ -1409,6 +1411,119 @@ async function poll() {
         } else {
           reply = "Пример: добавь встречу каждый понедельник в 10:00 планёрка";
         }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(\d+\.?\d*)\s*(юан[ейяь]?|cny|доллар[ов]?|usd|евро|eur|рубл[ейяь]?|rub)\s+в\s+(юан[ейяь]?|cny|доллар[ов]?|usd|евро|eur|рубл[ейяь]?|rub)/i)) {
+        const match = text.match(/^(\d+\.?\d*)\s*(юан[ейяь]?|cny|доллар[ов]?|usd|евро|eur|рубл[ейяь]?|rub)\s+в\s+(юан[ейяь]?|cny|доллар[ов]?|usd|евро|eur|рубл[ейяь]?|rub)/i);
+        const amount = parseFloat(match[1]);
+        const currencyMap = { "юан": "CNY", "юани": "CNY", "юань": "CNY", "юаня": "CNY", "cny": "CNY", "доллар": "USD", "долларов": "USD", "доллара": "USD", "usd": "USD", "евро": "EUR", "eur": "EUR", "рубл": "RUB", "рубль": "RUB", "рубля": "RUB", "рублей": "RUB", "rub": "RUB" };
+        const from = currencyMap[match[2].toLowerCase()] || match[2].toUpperCase();
+        const to = currencyMap[match[3].toLowerCase()] || match[3].toUpperCase();
+        try {
+          const r = await fetch(`https://api.exchangerate.host/convert?from=${from}&to=${to}&amount=${amount}`, { signal: AbortSignal.timeout(8000) });
+          const d = await r.json();
+          if (d.result) reply = `${match[1]} ${from} = ${d.result.toFixed(2)} ${to}`;
+          else reply = "Не удалось конвертировать.";
+        } catch { reply = "Ошибка конвертации."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(новости|новость)\s+(.+)/i)) {
+        const topic = text.replace(/^(новости|новость)\s+/i, "").trim();
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        reply = "Новости: «" + topic + "»\n\n" + await webSearch(topic + " новости 2026", 3);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^сколько\s+от\s+(.+?)\s+до\s+(.+)/i)) {
+        const match = text.match(/^сколько\s+от\s+(.+?)\s+до\s+(.+)/i);
+        const from = match[1].trim(), to = match[2].trim();
+        try {
+          const geo1 = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(from)}&count=1`);
+          const geo2 = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(to)}&count=1`);
+          const g1 = await geo1.json(), g2 = await geo2.json();
+          if (g1.results?.[0] && g2.results?.[0]) {
+            const lat1 = g1.results[0].latitude, lon1 = g1.results[0].longitude;
+            const lat2 = g2.results[0].latitude, lon2 = g2.results[0].longitude;
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+            const dist = Math.round(2 * R * Math.asin(Math.sqrt(a)));
+            reply = `Расстояние от ${from} до ${to}: ~${dist} км (по прямой)`;
+          } else { reply = "Не нашла один из городов."; }
+        } catch { reply = "Ошибка расчёта."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Трекер привычек
+      if (text.match(/^я\s+(сделал|сходил|пробежал|прочитал|позанимался|помедитировал)\s+(.+)/i)) {
+        if (!botMemory.habits) botMemory.habits = {};
+        const habit = text.replace(/^я\s+(сделал|сходил|пробежал|прочитал|позанимался|помедитировал)\s+/i, "").trim();
+        botMemory.habits[habit] = (botMemory.habits[habit] || 0) + 1;
+        await saveMemory();
+        const streak = botMemory.habits[habit];
+        reply = `Отлично! «${habit}» — ${streak} раз${streak===1?"":"а"}! Так держать!`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+      if (text.match(/^(мой прогресс|мои привычки|статистика привычек)/i)) {
+        if (!botMemory.habits || !Object.keys(botMemory.habits).length) {
+          reply = "Пока нет привычек. Скажи «я сделал зарядку» чтобы начать.";
+        } else {
+          reply = "Твои привычки:\n";
+          for (const [k, v] of Object.entries(botMemory.habits).sort((a,b) => b[1]-a[1])) reply += `${k}: ${v} раз\n`;
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Список покупок
+      if (text.match(/^добавь в покупки\s+(.+)/i)) {
+        if (!botMemory.shopping) botMemory.shopping = [];
+        botMemory.shopping.push(text.replace(/^добавь в покупки\s+/i, "").trim());
+        await saveMemory();
+        reply = "Добавлено в покупки: " + botMemory.shopping[botMemory.shopping.length-1];
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+      if (text.match(/^(список покупок|что в покупках|покупки)/i)) {
+        if (!botMemory.shopping?.length) reply = "Список покупок пуст.";
+        else reply = "Список покупок:\n" + botMemory.shopping.map((s,i) => `${i+1}. ${s}`).join("\n");
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+      if (text.match(/^убери из покупок\s+(\d+)/i)) {
+        const idx = parseInt(text.match(/\d+/)[0]);
+        if (idx > 0 && idx <= (botMemory.shopping?.length || 0)) {
+          const removed = botMemory.shopping.splice(idx-1,1)[0];
+          await saveMemory();
+          reply = "Убрано: " + removed;
+        } else { reply = "Какой номер? Посмотри «список покупок»."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Случайный факт
+      if (text.match(/^(расскажи что-то интересное|случайный факт|интересный факт|что-нибудь интересное)/i)) {
+        const facts = [
+          "Осьминоги имеют три сердца, и их кровь голубого цвета.",
+          "Самый большой организм на Земле — грибница опёнка в Орегоне, занимающая 9,6 км².",
+          "Коалы спят до 22 часов в сутки.",
+          "Молния нагревает воздух до 30 000°C — это в 5 раз горячее поверхности Солнца.",
+          "Бананы радиоактивны из-за содержания калия-40.",
+          "Человеческий нос может различать более триллиона запахов.",
+          "В космосе нельзя плакать: слёзы не текут, а собираются в шарики.",
+          "Каждый день на Землю падает около 100 тонн космической пыли.",
+          "В Японии есть остров кроликов — Окуносима, где живут сотни диких кроликов.",
+          "Шансы погибнуть от падения кокоса выше, чем от нападения акулы — по статистике."
+        ];
+        reply = facts[Math.floor(Math.random() * facts.length)];
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
