@@ -434,20 +434,6 @@ async function listObsidianNotes() {
   if (botMemory.newItems?.length) parts.push(`📋 Список дел (${botMemory.newItems.length}):\n` + botMemory.newItems.map(n => `- ${n.item}`).join("\n"));
   return parts.length ? "Твой Obsidian:\n\n" + parts.join("\n\n") : "Obsidian пуст. Скажи «запомни...» чтобы добавить.";
 }
-  if (!BRAVE_SEARCH_KEY) return "Поиск не настроен. Нужен Brave Search API ключ.";
-  try {
-    const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&search_lang=ru`, {
-      headers: { Accept: "application/json", "Accept-Encoding": "gzip", "X-Subscription-Token": BRAVE_SEARCH_KEY },
-    });
-    const d = await r.json();
-    if (!d.web?.results?.length) return `По запросу «${query}» ничего не найдено.\n\nЧто можно попробовать:\n• Упрости запрос (меньше слов)\n• Поищи на конкретном сайте: «найди site:ozon.ru товар»\n• Используй другие ключевые слова\n• Пришли фото товара — я распознаю и найду`;
-    let reply = `Результаты поиска: «${query}»\n\n`;
-    d.web.results.forEach((r, i) => {
-      reply += `${i + 1}. ${r.title}\n${r.description?.slice(0, 150) || ""}\n${r.url}\n\n`;
-    });
-    return reply.slice(0, 3800);
-  } catch (e) { return "Ошибка поиска: " + e.message; }
-}
 
 async function getExchangeRates(text) {
   const now = mskTime();
