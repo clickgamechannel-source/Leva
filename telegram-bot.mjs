@@ -275,7 +275,7 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, помощница. Отвечай кратко, один раз, не повторяйся. Если не знаешь — скажи честно и предложи варианты. Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race, помощница. Отвечай кратко, только на русском языке, не повторяйся. Если не знаешь — скажи честно и предложи варианты. Сейчас: ${mskTime().toLocaleString("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
