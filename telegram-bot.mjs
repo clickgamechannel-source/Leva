@@ -42,7 +42,7 @@ const OPENAI_KEY = process.env.OPENAI_KEY || config.openaiKey || "";
 const TTS_PROVIDER = process.env.TTS_PROVIDER || config.ttsProvider || "google";
 const GITHUB_KEY = process.env.GITHUB_KEY || config.githubKey || "";
 const GIST_ID = process.env.GIST_ID || config.gistId || "";
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://smkjvihshumsrynnleji.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://smkjvihshumsrynnelji.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNta2p2aWhzaHVtc3J5bm5lbGppIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTk1MTg1OSwiZXhwIjoyMTAxNTI3ODU5fQ.3RRL8v9odHXF2YXiLZPKtzpaYp0rpJw16Gg1IqUYVkQ";
 const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeatherKey || "";
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
@@ -699,12 +699,34 @@ async function loadMemory() {
 
 async function saveMemory() {
   try {
+    // Supabase (основное)
     await fetch(`${SUPABASE_URL}/rest/v1/bot_memory?id=eq.1`, {
       method: "PATCH",
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({ data: botMemory, updated_at: new Date().toISOString() }),
     });
+    // Gist (резервное)
+    if (GITHUB_KEY && GIST_ID) {
+      fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        body: JSON.stringify({ files: { "memory.json": { content: JSON.stringify(botMemory) } } }),
+      }).catch(() => {});
+    }
   } catch (e) { log("Ошибка сохранения: " + e.message); }
+}
+
+// Статистика сообщений
+let stats = { messages: 0, searches: 0, photos: 0, voice: 0, startTime: new Date().toISOString() };
+
+async function selfTest() {
+  const results = [];
+  try { await fetch("https://api.deepseek.com/models", { headers: { Authorization: `Bearer ${DEEPSEEK_KEY}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ DeepSeek"); } catch { results.push("❌ DeepSeek"); }
+  try { await fetch("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${OPENAI_KEY}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ OpenAI"); } catch { results.push("❌ OpenAI"); }
+  try { await fetch(`${SUPABASE_URL}/rest/v1/bot_memory?id=eq.1&select=id`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ Supabase"); } catch { results.push("❌ Supabase"); }
+  if (TAVILY_KEY) try { await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TAVILY_KEY}` }, body: JSON.stringify({ query: "test", max_results: 1 }), signal: AbortSignal.timeout(5000) }); results.push("✅ Tavily"); } catch { results.push("❌ Tavily"); }
+  if (YANDEX_WEATHER_KEY) try { await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=48.77&lon=37.62&lang=ru_RU&limit=1`, { headers: { "X-Yandex-Weather-Key": YANDEX_WEATHER_KEY }, signal: AbortSignal.timeout(5000) }); results.push("✅ Яндекс.Погода"); } catch { results.push("❌ Яндекс.Погода"); }
+  return results.join("\n");
 }
 
 function memoryContext() {
@@ -1808,6 +1830,12 @@ function splitMessage(text) {
 }
 
 log("Бот запущен. deepseek-v4-pro + Obsidian vault + research + voice + cloud memory");
+// Самотестирование
+setTimeout(async () => {
+  const testResult = await selfTest();
+  log("Тест API:\n" + testResult);
+  tg("sendMessage", { chat_id: defaultChatId, text: "✅ Race запущена\n\nТест API:\n" + testResult }).catch(() => {});
+}, 5000);
 tg("sendMessage", { chat_id: defaultChatId, text: "Обновление выполнено! Бот запущен и готов к работе." }).catch(() => {});
 
 // HTTP-сервер для Render (health check)
