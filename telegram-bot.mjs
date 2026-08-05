@@ -5,6 +5,11 @@ import { createServer } from "http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+let googleCal = null;
+try {
+  googleCal = JSON.parse(readFileSync(resolve(__dirname, "google-calendar.json"), "utf8"));
+} catch {}
+
 const CONFIG_FILE = resolve(__dirname, "bot-config.json");
 const LOG_FILE = resolve(__dirname, "bot-log.txt");
 
@@ -567,7 +572,7 @@ async function textToVoice(text, voice = "nova") {
   }
 }
 
-let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova", timezone: 3 }, dialogues: [], reminders: [], learnings: [] };
+let botMemory = { facts: [], prefs: { bot_name: "Race", bot_gender: "female", voice: "nova", timezone: 3 }, dialogues: [], reminders: [], learnings: [], events: [] };
 const defaultChatId = 7649644701;
 const TZ_OFFSET = (botMemory.prefs?.timezone || 3) * 60 * 60 * 1000; // MSK = UTC+3
 
@@ -678,6 +683,110 @@ function checkReminders() {
   if (due.length) saveMemory().catch(() => {});
 }
 setInterval(checkReminders, 30000);
+
+let lastRates = {};
+setInterval(async () => {
+  try {
+    const r = await fetch("https://api.exchangerate.host/live?base=RUB&source=ecb&places=4", { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.success) return;
+    const cny = 1/d.rates.CNY, usd = 1/d.rates.USD, eur = 1/d.rates.EUR;
+    if (lastRates.cny && Math.abs(cny - lastRates.cny)/lastRates.cny > 0.02) {
+      tg("sendMessage", { chat_id: defaultChatId, text: `📈 Курс юаня изменился: ${lastRates.cny.toFixed(2)} → ${cny.toFixed(2)} ₽` }).catch(()=>{});
+    }
+    if (lastRates.usd && Math.abs(usd - lastRates.usd)/lastRates.usd > 0.02) {
+      tg("sendMessage", { chat_id: defaultChatId, text: `📈 Курс доллара изменился: ${lastRates.usd.toFixed(2)} → ${usd.toFixed(2)} ₽` }).catch(()=>{});
+    }
+    lastRates = { cny, usd, eur };
+  } catch {}
+}, 3600000); // раз в час
+
+setInterval(async () => {
+  const now = mskTime();
+  if (now.getHours() !== 21 || now.getMinutes() > 5) return; // 21:00 МСК
+  const isSunday = now.getDay() === 0;
+  let report = isSunday ? "📊 Недельный отчёт:\n\n" : "📋 Отчёт за день:\n\n";
+  const today = now.toISOString().slice(0,10);
+  if (botMemory.events?.length) {
+    const todayEvents = botMemory.events.filter(e => e.date.startsWith(today));
+    if (todayEvents.length) { report += "📅 Встречи:\n"; todayEvents.forEach(e => report += `  ${new Date(e.date).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — ${e.description}\n`); }
+  }
+  if (botMemory.expenses?.length) {
+    const todayExp = botMemory.expenses.filter(e => e.date === today);
+    if (todayExp.length) report += `\n💰 Расходов сегодня: ${todayExp.length}`;
+  }
+  if (botMemory.newItems?.length) {
+    report += `\n\n📋 В списке дел: ${botMemory.newItems.length} пунктов`;
+  }
+  try { await fetchWeather(48.77, 37.62, "", YANDEX_WEATHER_KEY).then(w => report += "\n\n" + w.slice(0, 200)); } catch {}
+  if (isSunday && botMemory.dialogues?.length) {
+    report += `\n\n💬 Диалогов за неделю: ${botMemory.dialogues.length}`;
+  }
+  tg("sendMessage", { chat_id: defaultChatId, text: report }).catch(()=>{});
+  if (isSunday) {
+    const noteContent = report + "\n\n---\n*Автоотчёт Race*";
+    writeObsidianFile(`Отчёты/${today}.md`, noteContent).catch(()=>{});
+  }
+}, 300000); // проверка каждые 5 минут
+
+function parseEvent(text) {
+  const clean = text.replace(/^(добавь встречу|добавь событие|новая встреча|создай встречу)\s*/i, "");
+  let dateStr = "", desc = "";
+  const todayMatch = clean.match(/сегодня\s+(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
+  const tomorrowMatch = clean.match(/завтра\s+(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/i);
+  const dateMatch = clean.match(/(\d{2})\.(\d{2})(?:\.(\d{4}))?\s+(?:в|на)\s+(\d{1,2})[:.](\d{2})\s*(.+)/);
+  if (todayMatch) { const now = mskTime(); dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,"0")}-${now.getDate().toString().padStart(2,"0")}T${todayMatch[1].padStart(2,"0")}:${todayMatch[2]}:00`; desc = todayMatch[3]; }
+  else if (tomorrowMatch) { const d = new Date(mskTime().getTime() + 86400000); dateStr = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,"0")}-${d.getDate().toString().padStart(2,"0")}T${tomorrowMatch[1].padStart(2,"0")}:${tomorrowMatch[2]}:00`; desc = tomorrowMatch[3]; }
+  else if (dateMatch) { dateStr = `${dateMatch[3]||mskTime().getFullYear()}-${dateMatch[2].padStart(2,"0")}-${dateMatch[1].padStart(2,"0")}T${dateMatch[4].padStart(2,"0")}:${dateMatch[5]}:00`; desc = dateMatch[6]; }
+  if (dateStr && desc) return { date: dateStr, description: desc.trim(), created: new Date().toISOString() };
+  return null;
+}
+
+async function getGoogleToken() {
+  if (!googleCal) return null;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = { iss: googleCal.client_email, scope: "https://www.googleapis.com/auth/calendar.events", aud: googleCal.token_uri, exp: now + 3600, iat: now };
+    const header = { alg: "RS256", typ: "JWT" };
+    const toBase64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+    const sign = (data) => {
+      const crypto = require("crypto");
+      return crypto.createSign("RSA-SHA256").update(data).sign(googleCal.private_key, "base64url");
+    };
+    const jwt = toBase64(header) + "." + toBase64(payload) + "." + sign(toBase64(header) + "." + toBase64(payload));
+    const r = await fetch(googleCal.token_uri, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=" + jwt });
+    const d = await r.json();
+    return d.access_token || null;
+  } catch { return null; }
+}
+
+async function googleCalendarAPI(method, path, body) {
+  const token = await getGoogleToken();
+  if (!token) return null;
+  const opts = { method, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch("https://www.googleapis.com/calendar/v3" + path + (path.includes("?") ? "&" : "?") + "timeZone=Europe/Moscow", opts);
+  return r.ok ? r.json() : null;
+}
+
+async function addGoogleEvent(event) {
+  if (!googleCal) return false;
+  const d = new Date(event.date);
+  const end = new Date(d.getTime() + 3600000);
+  const body = { summary: event.description, start: { dateTime: d.toISOString(), timeZone: "Europe/Moscow" }, end: { dateTime: end.toISOString(), timeZone: "Europe/Moscow" } };
+  const result = await googleCalendarAPI("POST", "/calendars/primary/events", body);
+  if (result?.id) { event.googleId = result.id; return true; }
+  return false;
+}
+
+async function syncWithGoogle() {
+  if (!googleCal || !botMemory.events) return;
+  for (const event of botMemory.events) {
+    if (!event.googleId) await addGoogleEvent(event);
+  }
+  await saveMemory();
+}
 
 function detectIntent(text) {
   const t = text.toLowerCase();
@@ -1090,6 +1199,77 @@ async function poll() {
           }
         } catch (e) {
           reply = "Не удалось получить погоду. Попробуй позже.";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(добавь встречу|добавь событие|новая встреча|создай встречу)/i)) {
+        const event = parseEvent(text);
+        if (event) {
+          if (!botMemory.events) botMemory.events = [];
+          botMemory.events.push(event);
+          botMemory.events.sort((a,b) => a.date.localeCompare(b.date));
+          if (googleCal) { const added = await addGoogleEvent(event); if (!added) reply = "Встреча сохранена локально (Google не отвечает)."; }
+          await saveMemory();
+          const d = new Date(event.date);
+          reply = `Встреча добавлена: ${d.toLocaleDateString("ru-RU")} в ${d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — «${event.description}»`;
+        } else {
+          reply = "Не поняла когда. Примеры:\n• добавь встречу завтра в 15:00 созвон\n• добавь встречу сегодня в 10:00 планёрка\n• добавь встречу 15.08 в 14:00 день рождения";
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(какие планы|что сегодня|что завтра|что послезавтра|план на|календарь|мои встречи|мои события)/i)) {
+        if (!botMemory.events?.length) {
+          reply = "В календаре пока пусто. Скажи «добавь встречу ...» чтобы создать.";
+        } else {
+          let filterDate = "";
+          if (text.match(/сегодня/i)) filterDate = mskTime().toISOString().slice(0,10);
+          else if (text.match(/завтра/i)) filterDate = new Date(mskTime().getTime()+86400000).toISOString().slice(0,10);
+          else if (text.match(/послезавтра/i)) filterDate = new Date(mskTime().getTime()+172800000).toISOString().slice(0,10);
+          const filtered = filterDate ? botMemory.events.filter(e => e.date.startsWith(filterDate)) : botMemory.events;
+          if (!filtered.length) { reply = `На ${filterDate||"ближайшее время"} встреч нет.`; }
+          else {
+            reply = filterDate ? `Встречи на ${filterDate}:\n` : "Все встречи:\n";
+            filtered.forEach((e,i) => {
+              const d = new Date(e.date);
+              reply += `${i+1}. ${d.toLocaleDateString("ru-RU")} ${d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — ${e.description}\n`;
+            });
+          }
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(удали встречу|удали событие)\s*(\d+)/i)) {
+        const idx = parseInt(text.match(/\d+/)[0]);
+        if (idx > 0 && idx <= (botMemory.events?.length || 0)) {
+          const removed = botMemory.events.splice(idx - 1, 1)[0];
+          await saveMemory();
+          reply = `Удалена встреча: «${removed.description}»`;
+        } else { reply = "Какую встречу удалить? Напиши номер. «какие планы» покажет список."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(дашборд|dashboard|покажи расходы|отчёт по расходам|расходы за месяц|статистика расходов)/i)) {
+        if (!botMemory.expenses?.length) { reply = "Расходов пока нет. Пришли фото с транзакциями и напиши «расходы»."; }
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          const byMonth = {};
+          for (const e of botMemory.expenses) { const m = e.date.slice(0,7); if (!byMonth[m]) byMonth[m] = []; byMonth[m].push(e); }
+          let dash = "# Дашборд расходов\n\n";
+          for (const [m, items] of Object.entries(byMonth).sort().reverse()) {
+            dash += `## ${m}\n`;
+            dash += `| # | Описание | Дата |\n|---|---|---|\n`;
+            items.forEach((e,i) => dash += `| ${i+1} | ${e.raw.slice(0,60)} | ${e.date} |\n`);
+            dash += `\n*Всего: ${items.length} транзакций*\n\n`;
+          }
+          const dashPath = `Дашборды/расходы.md`;
+          writeObsidianFile(dashPath, dash).catch(()=>{});
+          reply = dash.slice(0, 3500) + `\n\n📊 Сохранено в Obsidian: ${dashPath}`;
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
