@@ -1566,7 +1566,7 @@ async function poll() {
 
       if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        reply = await getExchangeRates(text);
+          reply = await webSearch(query);
         addToContext(userId, text, reply);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
