@@ -1089,7 +1089,7 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане)/i)) {
+      if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|память|что ты помнишь|что в памяти)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
         const result = q && q.length > 2 ? await searchObsidian(q) : await listObsidianNotes();
