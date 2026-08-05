@@ -1575,6 +1575,13 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/(?:курс|валют|юан|доллар|евро|рубл|cny|usd|eur|rub)\s+(?:к |в |на |по |)/i) && text.length < 120) {
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        reply = await getExchangeRates(text);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
