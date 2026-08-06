@@ -7,8 +7,5 @@
   },
   "engines": {
     "node": ">=22"
-  },
-  "dependencies": {
-    "jimp": "^1.6.0"
   }
 }
