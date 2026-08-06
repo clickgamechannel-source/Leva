@@ -283,7 +283,7 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race. Отвечай ОДНИМ коротким сообщением, ТОЛЬКО на русском. Без рассуждений и повторов. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race, ассистент. Общайся естественно, как человек. Не используй фразы "я должен", "мы должны", "пользователь ожидает". Просто отвечай. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} (МСК).`;
 
   const res = await fetch(DS_API, {
     method: "POST",
@@ -298,8 +298,7 @@ async function deepseekChat(userId, text) {
 
   const data = await res.json();
   let reply = data.choices?.[0]?.message?.content;
-  if (!reply) reply = data.choices?.[0]?.message?.reasoning_content;
-  if (!reply) reply = "Ошибка ответа от DeepSeek.";
+  if (!reply || reply.length < 5) reply = "Я сейчас не могу ответить — попробуй еще раз.";
   messages.push({ role: "assistant", content: reply });
   if (messages.length > 15) context.set(userId, messages.slice(-15));
   return reply;
