@@ -283,7 +283,7 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, ассистент. Общайся естественно, как человек. Не используй фразы "я должен", "мы должны", "пользователь ожидает". Просто отвечай. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} (МСК).`;
+  const system = `Ты — Race, дружелюбная девушка-помощница. Общайся естественно, поддерживай диалог. Не говори "я должен", "мы должны", "как ИИ". Просто будь собой. Твои ответы — это ответы живого человека, а не робота. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
@@ -1832,14 +1832,7 @@ function splitMessage(text) {
   return chunks;
 }
 
-log("Бот запущен. deepseek-v4-pro + Obsidian vault + research + voice + cloud memory");
-// Самотестирование
-setTimeout(async () => {
-  const testResult = await selfTest();
-  log("Тест API:\n" + testResult);
-  tg("sendMessage", { chat_id: defaultChatId, text: "✅ Race запущена\n\nТест API:\n" + testResult }).catch(() => {});
-}, 5000);
-tg("sendMessage", { chat_id: defaultChatId, text: "Обновление выполнено! Бот запущен и готов к работе." }).catch(() => {});
+log("Бот запущен. deepseek-v4-pro + Supabase");
 
 // HTTP-сервер для Render (health check)
 createServer((req, res) => { res.writeHead(200); res.end("OK"); }).listen(process.env.PORT || 3000);
