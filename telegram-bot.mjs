@@ -293,9 +293,9 @@ async function deepseekChat(userId, text) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-4)],
+      messages: [{ role: "system", content: system }, ...messages.slice(-2)],
       max_tokens: 2000,
-      temperature: 0.7,
+      temperature: 0.8,
     }),
   });
 
@@ -304,7 +304,7 @@ async function deepseekChat(userId, text) {
   if (!reply) reply = data.choices?.[0]?.message?.reasoning_content;
   if (!reply) reply = "Ошибка ответа от DeepSeek.";
   messages.push({ role: "assistant", content: reply });
-  if (messages.length > 30) context.set(userId, messages.slice(-30));
+  if (messages.length > 15) context.set(userId, messages.slice(-15));
   return reply;
 }
 
