@@ -51,7 +51,7 @@ const DS_API = "https://api.deepseek.com/chat/completions";
 const context = new Map();
 const pendingResearch = new Map();
 const voicePref = new Map();
-// lastPhoto removed
+// 
 let offset = 0;
 
 function addToContext(userId, userMsg, botReply) {
@@ -1386,10 +1386,10 @@ async function poll() {
 
       if (text.match(/^переведи\s+(.+)/i)) {
         const rest = text.replace(/^переведи\s+/i, "");
-        const langMatch = rest.match(/^(?:на\s+)?(английский|english|русский|russian|китайский|chinese|немецкий|german|испанский|spanish)/i);
+        const langMatch = rest.match(/^(?:на\s+)?(английский|english|русский|russian|китайский|chinese|немецкий|german|испанский|spanish|французский|french|итальянский|italian)/i);
         if (langMatch) {
           const lang = langMatch[1].toLowerCase();
-          const target = lang.match(/англ|english/i) ? "en" : lang.match(/кит|chinese/i) ? "zh" : lang.match(/нем|german/i) ? "de" : lang.match(/исп|spanish/i) ? "es" : "ru";
+          const target = lang.match(/англ|english/i) ? "en" : lang.match(/кит|chinese/i) ? "zh" : lang.match(/нем|german/i) ? "de" : lang.match(/исп|spanish/i) ? "es" : lang.match(/фран|french/i) ? "fr" : lang.match(/итал|italian/i) ? "it" : "ru";
           const textToTranslate = rest.replace(langMatch[0], "").trim();
           if (textToTranslate) {
             const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${target}&dt=t&q=` + encodeURIComponent(textToTranslate);
