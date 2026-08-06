@@ -734,6 +734,9 @@ async function selfTest() {
   try { await fetch(`${SUPABASE_URL}/rest/v1/bot_memory?id=eq.1&select=id`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ Supabase"); } catch { results.push("❌ Supabase"); }
   if (TAVILY_KEY) try { await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TAVILY_KEY}` }, body: JSON.stringify({ query: "test", max_results: 1 }), signal: AbortSignal.timeout(5000) }); results.push("✅ Tavily"); } catch { results.push("❌ Tavily"); }
   if (YANDEX_WEATHER_KEY) try { await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=48.77&lon=37.62&lang=ru_RU&limit=1`, { headers: { "X-Yandex-Weather-Key": YANDEX_WEATHER_KEY }, signal: AbortSignal.timeout(5000) }); results.push("✅ Яндекс.Погода"); } catch { results.push("❌ Яндекс.Погода"); }
+  if (YANDEX_TOKEN) try { await fetch("https://cloud-api.yandex.net/v1/disk", { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ Яндекс.Диск"); } catch { results.push("❌ Яндекс.Диск"); }
+  if (YANDEX_TOKEN) try { await fetch("https://api.mail.yandex.net/api/v1/messages?limit=1", { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ Яндекс.Почта"); } catch { results.push("❌ Яндекс.Почта"); }
+  if (GROQ_KEY) try { await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${GROQ_KEY}` }, signal: AbortSignal.timeout(5000) }); results.push("✅ Groq"); } catch { results.push("❌ Groq"); }
   return results.join("\n");
 }
 
