@@ -1352,6 +1352,38 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(проверь почту|почта|письма|что в почте)/i)) {
+        if (!YANDEX_TOKEN) reply = "Яндекс не подключён.";
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          try {
+            const mr = await fetch("https://api.mail.yandex.net/api/v1/messages?limit=5", { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+            if (mr.ok) {
+              const md = await mr.json();
+              if (md.messages?.length) { reply = "Последние письма:\n"; for (const m of md.messages.slice(0, 5)) reply += `📧 ${m.subject || "Без темы"}\n`; }
+              else reply = "Новых писем нет.";
+            } else reply = "Не удалось проверить почту.";
+          } catch { reply = "Ошибка доступа к почте."; }
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(сохрани на диск)\s+(.+)/i)) {
+        if (!YANDEX_TOKEN) reply = "Яндекс не подключён.";
+        else {
+          const content = text.replace(/^сохрани на диск\s+/i, "");
+          try {
+            const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=Race/заметка-${Date.now()}.md&overwrite=true`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+            const uploadD = await uploadR.json();
+            if (uploadD.href) { await fetch(uploadD.href, { method: "PUT", body: content }); reply = "Сохранено на Яндекс.Диск ✓"; }
+            else reply = "Не удалось сохранить: " + (uploadD.message || "");
+          } catch (e) { reply = "Ошибка Яндекс.Диска: " + e.message; }
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^переведи\s+(.+)/i)) {
         const rest = text.replace(/^переведи\s+/i, "");
         const langMatch = rest.match(/^(?:на\s+)?(английский|english|русский|russian|китайский|chinese|немецкий|german|испанский|spanish)/i);
