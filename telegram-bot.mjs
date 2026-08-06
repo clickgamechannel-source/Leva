@@ -476,7 +476,7 @@ async function analyzePhoto(photoBase64, prompt, maxTokens = 500, highDetail = f
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
     body: JSON.stringify({
-      model: "gpt-4o-mini", max_tokens: maxTokens,
+      model: "gpt-4o", max_tokens: maxTokens,
       messages: [{ role: "user", content: [
         { type: "text", text: prompt },
         { type: "image_url", image_url: { url: `data:image/jpeg;base64,${photoBase64}`, detail: highDetail ? "high" : "auto" } }
@@ -966,11 +966,11 @@ async function poll() {
           reply = `Распознала расходы (${lines.length} транзакций):\n${expenseText.slice(0, 1500)}\n\nСохранено в облако. Скажи «покажи отчёт за месяц» для сводки.`;
         } else if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
           const marketplace = caption.match(/озон|ozon/i) ? "site:ozon.ru" : caption.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
-          const ocrText = await analyzePhoto(photoBase64, "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель, любые цифры и буквы которые могут быть артикулом. Без лишних слов — только данные.", 300, true);
-          const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
-          reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
+          const ocrText = await analyzePhoto(photoBase64, "Ты — эксперт по товарам. На фото товар. Внимательно рассмотри и выведи ТОЛЬКО данные для поиска:\n1. Бренд (производитель)\n2. Модель (точное название)\n3. Артикул (если виден)\n4. Штрихкод (если виден)\n5. Категория товара\n6. Ключевые характеристики (цвет, размер, объём)\n\nФормат: Бренд: X | Модель: Y | Артикул: Z\nТолько факты. Без лишних слов.", 400, true);
+          const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 120) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
+          reply = `Распознала:\n${ocrText.slice(0, 300)}\n\n`;
           if (marketplace) {
-            reply += await webSearch(`${searchQuery} ${marketplace}`);
+            reply += await webSearch(`${searchQuery} ${marketplace} цена`);
           } else {
             reply += await webSearch(searchQuery);
           }
