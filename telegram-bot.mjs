@@ -965,14 +965,24 @@ async function poll() {
           await saveMemory();
           reply = `Распознала расходы (${lines.length} транзакций):\n${expenseText.slice(0, 1500)}\n\nСохранено в облако. Скажи «покажи отчёт за месяц» для сводки.`;
         } else if (caption.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries)/i)) {
-          const marketplace = caption.match(/озон|ozon/i) ? "site:ozon.ru" : caption.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
-          const ocrText = await analyzePhoto(photoBase64, "Ты — эксперт по товарам. На фото товар. Внимательно рассмотри и выведи ТОЛЬКО данные для поиска:\n1. Бренд (производитель)\n2. Модель (точное название)\n3. Артикул (если виден)\n4. Штрихкод (если виден)\n5. Категория товара\n6. Ключевые характеристики (цвет, размер, объём)\n\nФормат: Бренд: X | Модель: Y | Артикул: Z\nТолько факты. Без лишних слов.", 400, true);
+          const marketplace = caption.match(/озон|ozon/i) ? "ozon.ru" : caption.match(/wb|wildberries/i) ? "wildberries.ru" : "";
+          const marketLabel = marketplace === "ozon.ru" ? "Ozon" : marketplace === "wildberries.ru" ? "Wildberries" : "интернете";
+          // Распознаём всё сразу
+          const ocrText = await analyzePhoto(photoBase64, "Ты — эксперт по товарам. На фото товар. Выведи ТОЛЬКО:\n1. Бренд\n2. Модель (точное название)\n3. Артикул\n4. Штрихкод\n5. Категория\n6. Характеристики (цвет, размер)\n\nФормат: Бренд: X | Модель: Y | Артикул: Z\nЕсли чего-то нет — пропусти.", 400, true);
           const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 120) || caption.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
-          reply = `Распознала:\n${ocrText.slice(0, 300)}\n\n`;
-          if (marketplace) {
-            reply += await webSearch(`${searchQuery} ${marketplace} цена`);
+
+          reply = `🔍 Распознала:\n${ocrText.slice(0, 300)}\n\nИщу на ${marketLabel}...`;
+
+          // Поиск с site: + цена
+          const siteQuery = marketplace ? `site:${marketplace}` : "";
+          const searchResult = await webSearch(`${searchQuery} ${siteQuery} цена купить`);
+
+          // Если есть результаты — показываем подробно
+          if (searchResult && !searchResult.includes("ничего не найдено")) {
+            reply = `🔍 Распознала:\n${ocrText.slice(0, 250)}\n\n📦 На ${marketLabel}:\n\n${searchResult}`;
           } else {
-            reply += await webSearch(searchQuery);
+            // Не найдено — предлагаем переснять
+            reply = `🔍 Распознала:\n${ocrText.slice(0, 250)}\n\n❌ На ${marketLabel} ничего не найдено.\n\nПопробуй:\n• Сфоткай товар крупнее — чтобы был виден артикул или штрихкод\n• Сфоткай упаковку — там обычно есть модель\n• Напиши название товара текстом — я поищу`;
           }
         } else if (caption.match(/^(прочитай|читай|распознай текст|что написано|ocr)/i)) {
           reply = await analyzePhoto(photoBase64, "Внимательно прочитай ВЕСЬ текст на этом изображении. Выведи только текст, точно как он написан. Если есть QR-код или штрихкод — расшифруй. Если есть цифры — выведи их.", 1000, true);
