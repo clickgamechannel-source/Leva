@@ -963,8 +963,6 @@ async function poll() {
           reply = await analyzePhoto(photoBase64, "Опиши максимально подробно что на этом фото: все предметы, люди, текст, цвета, обстановку. Если есть текст — прочитай его. На русском.", 500, true);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
-        context.delete(userId);
-        lastPhoto.delete(userId); // очищаем последнее фото
         continue;
       }
 
