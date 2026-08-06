@@ -1581,8 +1581,12 @@ async function poll() {
       }
 
       if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
-        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        const query = text.replace(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)\s*/i, "").trim();
+        if (!query) { reply = "Что искать? Пример: найди в интернете DJI Mavic 3 цена"; }
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
+        }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
