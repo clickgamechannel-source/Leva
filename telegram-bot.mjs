@@ -5,16 +5,6 @@ import { createServer } from "http";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-let googleCal = null;
-try {
-  const gcEnv = process.env.GOOGLE_CALENDAR_JSON || "";
-  if (gcEnv) {
-    googleCal = JSON.parse(gcEnv);
-  } else {
-    googleCal = JSON.parse(readFileSync(resolve(__dirname, "google-calendar.json"), "utf8"));
-  }
-} catch {}
-
 const CONFIG_FILE = resolve(__dirname, "bot-config.json");
 const LOG_FILE = resolve(__dirname, "bot-log.txt");
 
@@ -865,51 +855,6 @@ function parseEvent(text) {
   return null;
 }
 
-async function getGoogleToken() {
-  if (!googleCal) return null;
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const payload = { iss: googleCal.client_email, scope: "https://www.googleapis.com/auth/calendar.events", aud: googleCal.token_uri, exp: now + 3600, iat: now };
-    const header = { alg: "RS256", typ: "JWT" };
-    const toBase64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
-    const sign = (data) => {
-      const crypto = require("crypto");
-      return crypto.createSign("RSA-SHA256").update(data).sign(googleCal.private_key, "base64url");
-    };
-    const jwt = toBase64(header) + "." + toBase64(payload) + "." + sign(toBase64(header) + "." + toBase64(payload));
-    const r = await fetch(googleCal.token_uri, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=" + jwt });
-    const d = await r.json();
-    return d.access_token || null;
-  } catch { return null; }
-}
-
-async function googleCalendarAPI(method, path, body) {
-  const token = await getGoogleToken();
-  if (!token) return null;
-  const opts = { method, headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } };
-  if (body) opts.body = JSON.stringify(body);
-  const r = await fetch("https://www.googleapis.com/calendar/v3" + path + (path.includes("?") ? "&" : "?") + "timeZone=Europe/Moscow", opts);
-  return r.ok ? r.json() : null;
-}
-
-async function addGoogleEvent(event) {
-  if (!googleCal) return false;
-  const d = new Date(event.date);
-  const end = new Date(d.getTime() + 3600000);
-  const body = { summary: event.description, start: { dateTime: d.toISOString(), timeZone: "Europe/Moscow" }, end: { dateTime: end.toISOString(), timeZone: "Europe/Moscow" } };
-  const result = await googleCalendarAPI("POST", "/calendars/primary/events", body);
-  if (result?.id) { event.googleId = result.id; return true; }
-  return false;
-}
-
-async function syncWithGoogle() {
-  if (!googleCal || !botMemory.events) return;
-  for (const event of botMemory.events) {
-    if (!event.googleId) await addGoogleEvent(event);
-  }
-  await saveMemory();
-}
-
 function detectIntent(text) {
   const t = text.toLowerCase();
 
@@ -1342,7 +1287,6 @@ async function poll() {
           if (!botMemory.events) botMemory.events = [];
           botMemory.events.push(event);
           botMemory.events.sort((a,b) => a.date.localeCompare(b.date));
-          if (googleCal) { const added = await addGoogleEvent(event); if (!added) reply = "Встреча сохранена локально (Google не отвечает)."; }
           await saveMemory();
           const d = new Date(event.date);
           reply = `Встреча добавлена: ${d.toLocaleDateString("ru-RU")} в ${d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — «${event.description}»`;
