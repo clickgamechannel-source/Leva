@@ -103,25 +103,42 @@ async function readObsidianFile(sub) {
 }
 
 async function writeObsidianFile(sub, content) {
-  if (!GITHUB_KEY) return "Obsidian Git не настроен.";
-  try {
-    let sha = null;
+  // Яндекс.Диск (основной)
+  if (YANDEX_TOKEN) {
     try {
-      const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
-        headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      const cleanPath = sub.replace(/\\/g, "/");
+      const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=Obsidian/${cleanPath}&overwrite=true`, {
+        headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
       });
-      if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
-    } catch {}
-    const body = { message: "Race: " + sub, content: Buffer.from(content).toString("base64") };
-    if (sha) body.sha = sha;
-    const r = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json();
-    return d.content ? `Записано: ${sub}` : "Ошибка: " + (d.message || "");
-  } catch (e) { return "Ошибка: " + e.message; }
+      const uploadD = await uploadR.json();
+      if (uploadD.href) {
+        await fetch(uploadD.href, { method: "PUT", body: content });
+        return `Записано: ${sub} (Яндекс.Диск)`;
+      }
+    } catch (e) { log("Яндекс.Диск: " + e.message); }
+  }
+  // GitHub (запасной)
+  if (GITHUB_KEY) {
+    try {
+      let sha = null;
+      try {
+        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
+          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        });
+        if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
+      } catch {}
+      const body = { message: "Race: " + sub, content: Buffer.from(content).toString("base64") };
+      if (sha) body.sha = sha;
+      const r = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      return d.content ? `Записано: ${sub}` : "Ошибка: " + (d.message || "");
+    } catch (e) { return "Ошибка: " + e.message; }
+  }
+  return "Нет доступа к хранилищу.";
 }
 
 function listVault(sub = "") {
