@@ -272,17 +272,6 @@ async function deepseekChat(userId, text) {
   const messages = context.get(userId);
 
   let userMsg = text;
-  // Автопоиск в интернете для каждого запроса
-  if (text.length > 10 && !text.startsWith("/") && !text.match(/^(привет|пока|да|нет|спс|как дела|что делаешь|сколько времени|какая дата|ок|ясно|понял|принял)/i)) {
-    try {
-      const searchResult = await webSearch(text);
-      if (searchResult && !searchResult.includes("не настроен") && !searchResult.includes("ничего не найдено")) {
-        userMsg = `${text}\n\n[ИНФОРМАЦИЯ ИЗ ИНТЕРНЕТА:\n${searchResult.slice(0, 2000)}\nИспользуй эти данные для ответа.]`;
-        if (!botMemory.searchHistory) botMemory.searchHistory = [];
-        botMemory.searchHistory.push({ query: text.slice(0,100), result: searchResult.slice(0,500), time: new Date().toISOString() });
-      }
-    } catch {}
-  }
 
   messages.push({ role: "user", content: userMsg });
 
