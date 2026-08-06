@@ -916,7 +916,7 @@ async function poll() {
         const photoUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileD.result.file_path}`;
         const photoData = await fetch(photoUrl);
         const photoBase64 = Buffer.from(await photoData.arrayBuffer()).toString("base64");
-        lastPhoto.set(userId, photoBase64);
+        // lastPhoto removed
 
         if (caption.match(/(?:расход|трат|финанс|бюджет|отч[её]т)/i)) {
           const expenseText = await analyzePhoto(photoBase64, "На этом фото список транзакций или расходов. Внимательно прочитай ВСЕ строки: дату, описание, сумму. Выведи в формате: дата | описание | сумма. Каждую транзакцию с новой строки.", 1500, true);
@@ -1630,20 +1630,20 @@ async function poll() {
         if (!t) { reply = "Что записать?"; }
         else { if (!botMemory.facts) botMemory.facts = []; botMemory.facts.push(t); await saveMemory(); reply = "Записано: "+t; }
       } else if (text.startsWith("/vault")) {
-        const editResult = await editAndSendPhoto(chatId, lastPhoto.get(userId), text);
+        const editResult = await editAndSendPhoto(chatId, null, text);
         if (editResult !== "Обработано") await tg("sendMessage", { chat_id: chatId, text: editResult });
         continue;
-      } else if (lastPhoto.has(userId) && text.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries|что за товар)/i)) {
+      } else if (false && text.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries|что за товар)/i)) {
         const marketplace = text.match(/озон|ozon/i) ? "site:ozon.ru" : text.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
-        const ocrText = await analyzePhoto(lastPhoto.get(userId), "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель. Только данные, без лишних слов.", 300, true);
+        const ocrText = await analyzePhoto(null, "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель. Только данные, без лишних слов.", 300, true);
         const searchQuery = ocrText.replace(/[^\w\sа-яё\-]/gi, " ").replace(/\s+/g, " ").trim().slice(0, 100) || text.replace(/(найди|поищи|артикул|озон|ozon|wb|wildberries|на |по )/gi, "").trim();
         reply = `Распознано: «${ocrText.slice(0, 200)}»\n\n`;
         reply += await webSearch(`${searchQuery} ${marketplace}`);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       } else if (text.match(/(?:расход|трат|финанс|бюджет|отч[её]т|анализ расход)/i)) {
-        if (lastPhoto.has(userId)) {
-          const expenseText = await analyzePhoto(lastPhoto.get(userId), "На этом фото список транзакций или расходов. Внимательно прочитай ВСЕ строки: дату, описание, сумму. Выведи в формате: дата | описание | сумма. Каждую транзакцию с новой строки.", 1500, true);
+        if (false) {
+          const expenseText = await analyzePhoto(null, "На этом фото список транзакций или расходов. Внимательно прочитай ВСЕ строки: дату, описание, сумму. Выведи в формате: дата | описание | сумма. Каждую транзакцию с новой строки.", 1500, true);
           if (!botMemory.expenses) botMemory.expenses = [];
           const lines = expenseText.split("\n").filter(l => l.match(/\d/));
           for (const line of lines) {
@@ -1674,12 +1674,12 @@ async function poll() {
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
-      } else if (lastPhoto.has(userId) && text.match(/^(прочитай|читай|распознай|ocr|опиши|что на фото|что изображено)/i)) {
-        reply = await analyzePhoto(lastPhoto.get(userId), text, 500);
+      } else if (false && text.match(/^(прочитай|читай|распознай|ocr|опиши|что на фото|что изображено)/i)) {
+        reply = await analyzePhoto(null, text, 500);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
-      } else if (lastPhoto.has(userId) && text.length < 120 && !text.startsWith("/")) {
-        reply = await analyzePhoto(lastPhoto.get(userId), text, 800);
+      } else if (false && text.length < 120 && !text.startsWith("/")) {
+        reply = await analyzePhoto(null, text, 800);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       } else if (text.startsWith("/vault read")) {
