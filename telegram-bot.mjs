@@ -51,7 +51,7 @@ const DS_API = "https://api.deepseek.com/chat/completions";
 const context = new Map();
 const pendingResearch = new Map();
 const voicePref = new Map();
-const lastPhoto = new Map();
+// lastPhoto removed
 let offset = 0;
 
 function addToContext(userId, userMsg, botReply) {
