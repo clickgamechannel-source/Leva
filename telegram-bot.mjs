@@ -294,7 +294,7 @@ const writeQueue = new Map();
 setInterval(async () => {
   const now = mskTime();
   if (now.getHours() !== 8 || now.getMinutes() > 5) return;
-  let briefing = "🌅 Доброе утро!\n\n☀️ " + await fetchWeather(48.77, 37.62, "Рай-Александровка", YANDEX_WEATHER_KEY).catch(()=>"");
+  let briefing = "🌅 Доброе утро!\n\n☀️ " + await fetchWeather(48.81, 37.85, "Рай-Александровка", YANDEX_WEATHER_KEY).catch(()=>"");
   briefing += "\n💱 " + await getExchangeRates("").catch(()=>"");
   const today = now.toISOString().slice(0,10);
   const todayEv = (botMemory.events||[]).filter(e => e.date.startsWith(today));
@@ -812,7 +812,7 @@ setInterval(async () => {
   if (botMemory.newItems?.length) {
     report += `\n\n📋 В списке дел: ${botMemory.newItems.length} пунктов`;
   }
-  try { await fetchWeather(48.77, 37.62, "", YANDEX_WEATHER_KEY).then(w => report += "\n\n" + w.slice(0, 200)); } catch {}
+  try { await fetchWeather(48.81, 37.85, "", YANDEX_WEATHER_KEY).then(w => report += "\n\n" + w.slice(0, 200)); } catch {}
   if (isSunday && botMemory.dialogues?.length) {
     report += `\n\n💬 Диалогов за неделю: ${botMemory.dialogues.length}`;
   }
@@ -1096,7 +1096,7 @@ async function poll() {
       }
 
       if (text === "/weather" || text === "погода") {
-        reply = await fetchWeather(48.77, 37.62, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
+        reply = await fetchWeather(48.81, 37.85, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
@@ -1202,9 +1202,9 @@ async function poll() {
         let city = text.replace(/^(погода|какая погода|прогноз погоды|weather)\s*/i, "").trim();
         if (!city || city.length < 2) city = "Луганск";
         const knownLocations = {
-          "рай-александровка": { name: "Рай-Александровка, ДНР", lat: 48.77, lon: 37.62 },
-          "рай александровка": { name: "Рай-Александровка, ДНР", lat: 48.77, lon: 37.62 },
-          "райалександровка": { name: "Рай-Александровка, ДНР", lat: 48.77, lon: 37.62 },
+          "рай-александровка": { name: "Рай-Александровка, ДНР", lat: 48.81, lon: 37.85 },
+          "рай александровка": { name: "Рай-Александровка, ДНР", lat: 48.81, lon: 37.85 },
+          "райалександровка": { name: "Рай-Александровка, ДНР", lat: 48.81, lon: 37.85 },
           "александровка днр": { name: "Александровка, ДНР", lat: 48.70, lon: 37.60 },
           "александровка": { name: "Александровка, ДНР", lat: 48.70, lon: 37.60 },
           "луганск": { name: "Луганск", lat: 48.57, lon: 39.31 },
