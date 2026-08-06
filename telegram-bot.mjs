@@ -35,6 +35,7 @@ const GIST_ID = process.env.GIST_ID || config.gistId || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://smkjvihshumsrynnelji.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNta2p2aWhzaHVtc3J5bm5lbGppIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTk1MTg1OSwiZXhwIjoyMTAxNTI3ODU5fQ.3RRL8v9odHXF2YXiLZPKtzpaYp0rpJw16Gg1IqUYVkQ";
 const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeatherKey || "";
+const YANDEX_TOKEN = process.env.YANDEX_TOKEN || config.yandexToken || "y0__wgBEP-tgu8HGNjRRiCBkbfJGDDHmb_wCGej0QbIAcrMmmU1Raw-GxbCsASh";
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
 const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
 const BRAVE_SEARCH_KEY = process.env.BRAVE_SEARCH_KEY || config.braveSearchKey || "";
@@ -962,6 +963,7 @@ async function poll() {
           reply = await analyzePhoto(photoBase64, "Опиши максимально подробно что на этом фото: все предметы, люди, текст, цвета, обстановку. Если есть текст — прочитай его. На русском.", 500, true);
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
+        context.delete(userId); // очищаем контекст после фото — чтобы не повторял
         continue;
       }
 
