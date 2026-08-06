@@ -1615,9 +1615,7 @@ async function poll() {
         if (!t) { reply = "Что записать?"; }
         else { if (!botMemory.facts) botMemory.facts = []; botMemory.facts.push(t); await saveMemory(); reply = "Записано: "+t; }
       } else if (text.startsWith("/vault")) {
-        const editResult = await editAndSendPhoto(chatId, null, text);
-        if (editResult !== "Обработано") await tg("sendMessage", { chat_id: chatId, text: editResult });
-        continue;
+        reply = `/vault list — облачное хранилище\n/vault read — прочитать\n/vault search — поиск\n/vault write — записать`;
       } else if (false && text.match(/(?:найди|поищи|артикул|озон|ozon|wb|wildberries|что за товар)/i)) {
         const marketplace = text.match(/озон|ozon/i) ? "site:ozon.ru" : text.match(/wb|wildberries/i) ? "site:wildberries.ru" : "";
         const ocrText = await analyzePhoto(null, "На этом фото товар. Внимательно рассмотри и выведи: артикул, штрихкод, название бренда, модель. Только данные, без лишних слов.", 300, true);
