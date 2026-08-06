@@ -567,10 +567,38 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         const f = d.fact;
         const cond = yandexWeatherMap[f.condition] || f.condition;
         const dirMap = { "nw": "СЗ", "n": "С", "ne": "СВ", "e": "В", "se": "ЮВ", "s": "Ю", "sw": "ЮЗ", "w": "З", "c": "Штиль" };
-        let reply = `Погода в ${name} (Яндекс):\n\n${weatherEmoji[f.condition] || "🌡"} Сейчас: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n💨 Ветер: ${dirMap[f.wind_dir] || f.wind_dir} ${f.wind_speed} м/с\n💧 Влажность: ${f.humidity}%\n📊 Давление: ${f.pressure_mm} мм\n\n`;
+        const emoji = weatherEmoji[f.condition] || "🌡";
+        const windDir = dirMap[f.wind_dir] || f.wind_dir;
+        const windSpeed = f.wind_speed;
+
+        // Рекомендации
+        let recs = [];
+        if (f.condition?.includes("rain") || f.condition?.includes("showers") || f.condition?.includes("drizzle")) recs.push("☂️ Возьми зонт");
+        if (f.temp < 5) recs.push("🧥 Надень куртку потеплее");
+        else if (f.temp < 12) recs.push("🧥 Надень куртку");
+        else if (f.temp > 28) recs.push("💧 Пей больше воды");
+        if (windSpeed > 12) recs.push("💨 Сильный ветер — будь осторожен");
+        if (f.pressure_mm < 730) recs.push("📉 Низкое давление — возможна сонливость");
+        if (f.pressure_mm > 760) recs.push("📈 Высокое давление");
+
+        let reply = `Погода в ${name} (Яндекс):\n\n`;
+        // Повествование + цифры
+        if (f.temp > 25) reply += `Сегодня тепло — ${emoji} ${f.temp}°C. `;
+        else if (f.temp > 15) reply += `Комфортная погода — ${emoji} ${f.temp}°C. `;
+        else if (f.temp > 5) reply += `Прохладно — ${emoji} ${f.temp}°C. `;
+        else reply += `Холодно — ${emoji} ${f.temp}°C. `;
+
+        if (f.condition?.includes("rain")) reply += "Идёт дождь. ";
+        else if (f.condition?.includes("cloud")) reply += "Облачно. ";
+        else if (f.condition === "clear") reply += "Ясно. ";
+
+        reply += `Ощущается как ${f.feels_like}°C.\n💨 Ветер: ${windDir} ${windSpeed} м/с\n💧 Влажность: ${f.humidity}%\n📊 Давление: ${f.pressure_mm} мм\n`;
+
+        if (recs.length) reply += "\n" + recs.join("\n") + "\n";
+
+        reply += "\n";
         const periodNames = { morning: "Утро", day: "День", evening: "Вечер", night: "Ночь" };
         for (const day of (d.forecasts || []).slice(0, 1)) {
-          reply += `${day.date}:\n`;
           for (const part of ["morning", "day", "evening", "night"]) {
             const p = day.parts?.[part];
             if (p) {
