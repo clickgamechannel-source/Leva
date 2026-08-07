@@ -567,17 +567,26 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         const windDir = dirMap[f.wind_dir] || f.wind_dir;
         const windSpeed = f.wind_speed;
 
+        const phrases = {
+          hot: ["🥵 Жарковато!", "☀️ Печёт как в духовке!", "🧴 Не забудь крем от солнца!"],
+          warm: ["😎 Комфортно, самое то для прогулки!", "🌤 Отличная погода для дел!", "⚡ Бодрое утро!"],
+          cool: ["🍂 Прохладно, самое то для кофе!", "🧥 Лёгкая куртка не помешает", "🌬 Свежо и бодрит!"],
+          cold: ["🥶 Холодно, береги руки!", "❄️ Зима близко!", "🧤 Без шапки никуда!"],
+        };
+        let phrase = "";
+        if (f.temp > 30) phrase = phrases.hot[Math.floor(Math.random() * phrases.hot.length)];
+        else if (f.temp > 20) phrase = phrases.warm[Math.floor(Math.random() * phrases.warm.length)];
+        else if (f.temp > 10) phrase = phrases.cool[Math.floor(Math.random() * phrases.cool.length)];
+        else phrase = phrases.cold[Math.floor(Math.random() * phrases.cold.length)];
+
         let reply = `${emoji} ${name}: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n`;
         reply += `💨 Ветер: ${windDir}, ${windSpeed} м/с`;
-        if (windSpeed < 3) reply += " (штиль)";
-        else if (windSpeed < 8) reply += " (умеренный)";
-        else if (windSpeed < 14) reply += " (сильный)";
-        else reply += " (очень сильный!)";
-        reply += `\n💧 Влажность: ${f.humidity}%\n📊 Давление: ${f.pressure_mm} мм`;
-
-        if (f.condition?.includes("rain")) reply += "\n☂️ Возьми зонт";
-        if (f.temp < 5) reply += "\n🧥 Оденься теплее";
-        else if (f.temp > 28) reply += "\n💧 Пей больше воды";
+        if (windSpeed < 3) reply += " — почти штиль";
+        else if (windSpeed < 8) reply += " — ветерок";
+        else if (windSpeed < 14) reply += " — крепкий ветер";
+        else reply += " — сносит!";
+        reply += `\n${phrase}`;
+        if (f.condition?.includes("rain")) reply += "\n☂️ Зонт пригодится!";
 
         return reply;
       }
