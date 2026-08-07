@@ -1215,9 +1215,8 @@ async function poll() {
 
       if (text.match(/^(погода|какая погода|прогноз погоды|weather)/i) || (text.includes("погод") && text.length < 80)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        let city = text.replace(/.*погод[а-уё]*\s*/i, "").replace(/\?/g,"").trim();
-        city = city.replace(/^(какая|какой|какое|в|на|для|про|сейчас|сегодня|там)\s+/i, "").trim();
-        if (!city || city.length < 2 || city === text || city.length > 50) city = "Луганск";
+        let city = text.replace(/.*погод[а-уё]*/i, "").replace(/[?.,!]/g, "").replace(/\s+(в|на|для|про|сейчас|сегодня|там|какая|какой|какое|как|скажи|мне|так|что|что там)\s+/gi, " ").trim();
+        if (!city || city.length < 2) city = "Луганск";
         const knownLocations = {
           "рай-александровка": { name: "Рай-Александровка, ДНР", lat: 48.81, lon: 37.85 },
           "рай александровка": { name: "Рай-Александровка, ДНР", lat: 48.81, lon: 37.85 },
