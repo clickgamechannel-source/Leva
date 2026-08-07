@@ -1228,9 +1228,9 @@ async function poll() {
         const kl = knownLocations[city.toLowerCase()];
         if (kl) {
           reply = await fetchWeather(kl.lat, kl.lon, kl.name, YANDEX_WEATHER_KEY);
-        await tg("sendMessage", { chat_id: chatId, text: reply });
-        continue;
-      }
+          await tg("sendMessage", { chat_id: chatId, text: reply });
+          continue;
+        }
 
       if (text.match(/^добавь\s+(?!в заметку|в обсидиан)(.+)/i)) {
         const item = text.replace(/^добавь\s+/i, "").trim();
