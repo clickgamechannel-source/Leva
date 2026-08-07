@@ -562,9 +562,9 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         const d = await r.json();
         const f = d.fact;
         const cond = yandexWeatherMap[f.condition] || f.condition;
-        const dirMap = { "nw": "СЗ", "n": "С", "ne": "СВ", "e": "В", "se": "ЮВ", "s": "Ю", "sw": "ЮЗ", "w": "З", "c": "Штиль" };
+        const windNames = { nw: "северо-западный", n: "северный", ne: "северо-восточный", e: "восточный", se: "юго-восточный", s: "южный", sw: "юго-западный", w: "западный", c: "штиль" };
         const emoji = weatherEmoji[f.condition] || "🌡";
-        const windDir = dirMap[f.wind_dir] || f.wind_dir;
+        const windDir = windNames[f.wind_dir] || f.wind_dir;
         const windSpeed = f.wind_speed;
 
         const phrases = {
@@ -579,12 +579,13 @@ async function fetchWeather(lat, lon, name, yandexKey) {
         else if (f.temp > 10) phrase = phrases.cool[Math.floor(Math.random() * phrases.cool.length)];
         else phrase = phrases.cold[Math.floor(Math.random() * phrases.cold.length)];
 
-        let reply = `${emoji} ${name}: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n`;
-        reply += `💨 Ветер: ${windDir}, ${windSpeed} м/с`;
-        if (windSpeed < 3) reply += " — почти штиль";
-        else if (windSpeed < 8) reply += " — ветерок";
-        else if (windSpeed < 14) reply += " — крепкий ветер";
-        else reply += " — сносит!";
+        let reply = `${emoji} ${name}: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n💨 Ветер ${windDir}, ${windSpeed} м/с`;
+        if (windSpeed < 1) reply += " — штиль, безветренно";
+        else if (windSpeed < 4) reply += " — лёгкий ветерок";
+        else if (windSpeed < 8) reply += " — умеренный";
+        else if (windSpeed < 12) reply += " — крепкий, держись за шапку";
+        else if (windSpeed < 18) reply += " — сильный, сносит с ног";
+        else reply += " — ураган! Лучше дома";
         reply += `\n${phrase}`;
         if (f.condition?.includes("rain")) reply += "\n☂️ Зонт пригодится!";
 
