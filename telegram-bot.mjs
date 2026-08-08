@@ -1840,7 +1840,7 @@ async function poll() {
         await tg("sendMessage", { chat_id: chatId, text: chunk });
       }
 
-      botMemory.dialogues.push({ time: new Date().toISOString(), user: text.slice(0, 500), bot: reply.slice(0, 500) });
+      botMemory.dialogues.push({ time: mskTime().toISOString(), user: text.slice(0, 500), bot: reply.slice(0, 500) });
       dialogueCounter++;
 
       if (text.match(/(?:нет|не так|неправильно|ошибк|не верно|неверно|исправь|поправь)/i) && text.length > 10) {
