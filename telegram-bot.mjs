@@ -73,21 +73,9 @@ try {
   }
 } catch {}
 
-if (!useWebhook) {
-  const del = await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
-  const d = await del.json();
-  log("Webhook сброшен. long polling");
-  offset = -1;
-} else {
-  log("Webhook обнаружен: " + webhookInfo.result.url);
-  offset = -1;
-  const dup = await fetch(`${TG_API}/getUpdates?limit=1`);
-  const dp = await dup.json();
-  if (dp.result && dp.result.length > 0) {
-    offset = dp.result[dp.result.length - 1].update_id + 1;
-    log("пропущены старые обновления до offset=" + offset);
-  }
-}
+await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
+log("Webhook удалён. long polling");
+offset = -1;
 
 async function readObsidianFile(sub) {
   if (!GITHUB_KEY) return "Obsidian Git не настроен.";
