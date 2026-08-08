@@ -312,9 +312,9 @@ async function deepseekChat(userId, text) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-2)],
-      max_tokens: 500,
-      temperature: 0.8,
+      messages: [{ role: "system", content: system }, ...messages.slice(-6)],
+      max_tokens: 1000,
+      temperature: 0.9,
     }),
   });
 
@@ -322,7 +322,7 @@ async function deepseekChat(userId, text) {
   let reply = data.choices?.[0]?.message?.content;
   if (!reply || reply.length < 5) reply = "Я сейчас не могу ответить — попробуй еще раз.";
   messages.push({ role: "assistant", content: reply });
-  if (messages.length > 15) context.set(userId, messages.slice(-15));
+  if (messages.length > 40) context.set(userId, messages.slice(-40));
   return reply;
 }
 
