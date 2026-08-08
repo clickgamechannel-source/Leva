@@ -328,18 +328,32 @@ async function deepseekChat(userId, text) {
 
 const writeQueue = new Map();
 
-// Утренний брифинг в 8:00 МСК
+// Утренняя погода в 6:00 МСК
 setInterval(async () => {
   const now = mskTime();
-  if (now.getHours() !== 8 || now.getMinutes() > 5) return;
-  let briefing = "🌅 Доброе утро!\n\n☀️ " + await fetchWeather(48.81, 37.85, "Рай-Александровка", YANDEX_WEATHER_KEY).catch(()=>"");
-  briefing += "\n💱 " + await getExchangeRates("").catch(()=>"");
-  const today = now.toISOString().slice(0,10);
-  const todayEv = (botMemory.events||[]).filter(e => e.date.startsWith(today));
-  if (todayEv.length) { briefing += "\n📅 Сегодня:"; todayEv.forEach(e => briefing += `\n  ${new Date(e.date).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})} — ${e.description}`); }
-  if (botMemory.newItems?.length) briefing += `\n\n📋 Дел: ${botMemory.newItems.length}`;
-  tg("sendMessage", { chat_id: defaultChatId, text: briefing }).catch(()=>{});
+  if (now.getHours() !== 6 || now.getMinutes() > 5) return;
+  const weather = await fetchWeather(48.81, 37.85, "Рай-Александровка", YANDEX_WEATHER_KEY).catch(() => "Погода недоступна");
+  tg("sendMessage", { chat_id: defaultChatId, text: "🌅 Доброе утро!\n\n" + weather }).catch(()=>{});
 }, 300000);
+
+// Мониторинг ветра — если > 4 м/с, сообщить
+let lastWindSpeed = 0;
+setInterval(async () => {
+  try {
+    const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=48.81&lon=37.85&lang=ru_RU&limit=1`, {
+      headers: { "X-Yandex-Weather-Key": YANDEX_WEATHER_KEY }, signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    const wind = d.fact?.wind_speed || 0;
+    if (wind > 4 && wind !== lastWindSpeed) {
+      const dirNames = { nw: "северо-западный", n: "северный", ne: "северо-восточный", e: "восточный", se: "юго-восточный", s: "южный", sw: "юго-западный", w: "западный", c: "штиль" };
+      const dir = dirNames[d.fact.wind_dir] || "";
+      tg("sendMessage", { chat_id: defaultChatId, text: `💨 Ветер усилился: ${dir} ${wind} м/с в Рай-Александровке` }).catch(()=>{});
+    }
+    lastWindSpeed = wind;
+  } catch {}
+}, 900000); // каждые 15 минут
 
 // Автобэкап каждое воскресенье в 23:00
 setInterval(async () => {
