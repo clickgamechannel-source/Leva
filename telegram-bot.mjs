@@ -1042,7 +1042,54 @@ async function poll() {
                       const ctx = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 5)).join("\n");
                       matches.push(ctx.slice(0, 300));
                       if (matches.length >= 3) break;
-                    }
+      }
+
+      if (text.match(/^(добавь в вики|создай страницу|новая страница|запиши в вики)\s+(.+)/i)) {
+        const rest = text.replace(/^(добавь в вики|создай страницу|новая страница|запиши в вики)\s+/i, "");
+        const pageName = rest.replace(/\s+/g, "-").toLowerCase().replace(/[^а-яёa-z0-9\-]/gi, "").slice(0, 60);
+        const content = rest;
+        const pageContent = `# ${rest}\n\n**Summary**: \n\n**Sources**: \n\n**Last updated**: ${mskTime().toLocaleDateString("ru-RU")}\n\n---\n\n${content}\n\n## Related pages\n\n`;
+        const path = `wiki/${pageName}.md`;
+        writeObsidianFile(path, pageContent).catch(() => {});
+        // Обновить index
+        const idxPath = "wiki/index.md";
+        const idxEntry = `\n- [[${pageName}]]`;
+        try {
+          const idxR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/"+idxPath)}`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+          if (idxR.ok) {
+            const dd = await idxR.json();
+            if (dd.href) {
+              const fileR = await fetch(dd.href);
+              const existing = await fileR.text();
+              if (!existing.includes(`[[${pageName}]]`)) {
+                await writeObsidianFile(idxPath, existing + idxEntry);
+              }
+            }
+          }
+        } catch {}
+        reply = `Страница создана: wiki/${pageName}.md`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(линт вики|проверь вики|аудит вики)/i)) {
+        reply = "Линт вики:\n";
+        try {
+          const idxR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/wiki/index.md")}`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+          if (idxR.ok) {
+            const dd = await idxR.json();
+            if (dd.href) {
+              const idxText = await (await fetch(dd.href)).text();
+              const links = idxText.match(/\[\[([^\]]+)\]\]/g) || [];
+              reply += `• Страниц в индексе: ${links.length}\n`;
+              reply += `• Проверь wiki/ в Яндекс.Диске на сиротские страницы\n`;
+            }
+          } else reply += "• index.md не найден\n";
+        } catch { reply += "• Ошибка проверки\n"; }
+        reply += "\nСовет: проверь что все страницы в index.md имеют обратные ссылки.";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
                   }
                   results.push({ file: f, matches });
                   if (results.length >= 3) break;
