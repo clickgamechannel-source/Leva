@@ -107,6 +107,53 @@ async function writeObsidianFile(sub, content) {
   } catch (e) { return "Ошибка Яндекс.Диска: " + e.message; }
 }
 
+async function searchYandexDisk(query) {
+  if (!YANDEX_TOKEN) return "Яндекс.Диск не подключён.";
+  try {
+    const results = [];
+    async function walk(path) {
+      const r = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian/" + path)}&limit=50`, {
+        headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+      });
+      const d = await r.json();
+      if (!d._embedded?.items) return;
+      for (const item of d._embedded.items) {
+        if (item.type === "dir") { if (!query || item.name.toLowerCase().includes(query.toLowerCase())) results.push(`📁 ${path}${item.name}/`); await walk(path + item.name + "/"); }
+        else if (item.type === "file" && item.name.endsWith(".md")) {
+          if (!query || item.name.toLowerCase().includes(query.toLowerCase())) {
+            results.push(`📄 ${path}${item.name} (${(item.size/1024).toFixed(1)} КБ)`);
+          } else {
+            try {
+              const dl = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/" + path + item.name)}`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+              if (dl.ok) {
+                const dd = await dl.json();
+                if (dd.href) {
+                  const fileR = await fetch(dd.href);
+                  const content = await fileR.text();
+                  if (content.toLowerCase().includes(query.toLowerCase())) {
+                    const lines = content.split("\n");
+                    const matches = [];
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].toLowerCase().includes(query.toLowerCase())) {
+                        matches.push(lines[i].trim().slice(0, 150));
+                        if (matches.length >= 3) break;
+                      }
+                    }
+                    results.push(`📄 ${path}${item.name} — найдено: "${matches.join(" | ")}"`);
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+    }
+    await walk("");
+    if (!results.length) return query ? `По запросу «${query}» ничего не найдено на Яндекс.Диске.` : "Яндекс.Диск пуст.";
+    return (query ? `Найдено в Obsidian (Яндекс.Диск):\n\n` : "Файлы и папки в Obsidian:\n\n") + results.slice(0, 20).join("\n") + (results.length > 20 ? `\n...и ещё ${results.length - 20}` : "");
+  } catch (e) { return "Ошибка поиска: " + e.message; }
+}
+
 function listVault(sub = "") {
   const dir = safePath(sub);
   if (!dir || !existsSync(dir)) return `Путь не найден: ${sub}`;
@@ -246,6 +293,15 @@ async function deepseekChat(userId, text) {
   const messages = context.get(userId);
 
   let userMsg = text;
+  // Ищем в Яндекс.Диске релевантные заметки
+  if (text.length > 10 && !text.startsWith("/") && !text.match(/^(привет|пока|да|нет|спс|ок|ясно)/i)) {
+    try {
+      const vaultInfo = await searchYandexDisk(text);
+      if (vaultInfo && !vaultInfo.includes("ничего не найдено") && !vaultInfo.includes("не подключён")) {
+        userMsg = `${text}\n\n[НАЙДЕНО В OBSIDIAN:\n${vaultInfo.slice(0, 1500)}\nИспользуй эти данные для ответа.]`;
+      }
+    } catch {}
+  }
 
   messages.push({ role: "user", content: userMsg });
 
@@ -1090,7 +1146,15 @@ async function poll() {
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
-                  }
+      }
+
+      if (text.match(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы)/i)) {
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        const q = text.replace(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы)/gi, "").trim();
+        reply = await searchYandexDisk(q);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
                   results.push({ file: f, matches });
                   if (results.length >= 3) break;
                 }
