@@ -305,7 +305,7 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, дружелюбная девушка-помощница. Общайся естественно, поддерживай диалог. Не говори "я должен", "мы должны", "как ИИ". Просто будь собой. Твои ответы — это ответы живого человека, а не робота. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race, дружелюбная девушка-помощница. Общайся тепло, как близкий человек. Запоминай что тебе говорят и используй это в разговоре. Не будь роботом. Твои ответы — это ответы живого человека. Если что-то не знаешь — честно скажи и предложи помочь иначе. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
@@ -1162,7 +1162,13 @@ async function poll() {
       }
       }
 
-      if (text.match(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы)/i)) {
+      if (text === "/obsidian" || text === "/search") {
+        reply = "Что найти в Obsidian? Напиши тему или ключевые слова.\nНапример: что в обсидиан про Mavic";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы|найди в заметк|поищи в заметк)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы)/gi, "").trim();
         reply = await searchYandexDisk(q);
