@@ -110,47 +110,68 @@ async function writeObsidianFile(sub, content) {
 async function searchYandexDisk(query) {
   if (!YANDEX_TOKEN) return "Яндекс.Диск не подключён.";
   try {
+    // Быстрый поиск — только по названиям файлов
+    const r = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian")}&limit=200`, {
+      headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+    });
+    const d = await r.json();
     const results = [];
-    async function walk(path) {
-      const r = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian/" + path)}&limit=50`, {
+    
+    async function searchDir(path, depth) {
+      if (depth > 3) return; // макс глубина
+      const resp = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian/" + path)}&limit=100`, {
         headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
       });
-      const d = await r.json();
-      if (!d._embedded?.items) return;
-      for (const item of d._embedded.items) {
-        if (item.type === "dir") { if (!query || item.name.toLowerCase().includes(query.toLowerCase())) results.push(`📁 ${path}${item.name}/`); await walk(path + item.name + "/"); }
-        else if (item.type === "file" && item.name.endsWith(".md")) {
-          if (!query || item.name.toLowerCase().includes(query.toLowerCase())) {
-            results.push(`📄 ${path}${item.name} (${(item.size/1024).toFixed(1)} КБ)`);
-          } else {
-            try {
-              const dl = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/" + path + item.name)}`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
-              if (dl.ok) {
-                const dd = await dl.json();
-                if (dd.href) {
-                  const fileR = await fetch(dd.href);
-                  const content = await fileR.text();
-                  if (content.toLowerCase().includes(query.toLowerCase())) {
-                    const lines = content.split("\n");
-                    const matches = [];
-                    for (let i = 0; i < lines.length; i++) {
-                      if (lines[i].toLowerCase().includes(query.toLowerCase())) {
-                        matches.push(lines[i].trim().slice(0, 150));
-                        if (matches.length >= 3) break;
-                      }
-                    }
-                    results.push(`📄 ${path}${item.name} — найдено: "${matches.join(" | ")}"`);
-                  }
-                }
-              }
-            } catch {}
+      const dir = await resp.json();
+      if (!dir._embedded?.items) return;
+      
+      for (const item of dir._embedded.items) {
+        const name = item.name.toLowerCase();
+        const q = query.toLowerCase();
+        if (item.type === "dir") {
+          if (q && name.includes(q)) results.push(`📁 ${path}${item.name}/`);
+          await searchDir(path + item.name + "/", depth + 1);
+        } else if (item.type === "file" && item.name.endsWith(".md")) {
+          if (!q || name.includes(q)) {
+            results.push({ path: `${path}${item.name}`, size: item.size, name: item.name });
           }
         }
       }
     }
-    await walk("");
-    if (!results.length) return query ? `По запросу «${query}» ничего не найдено на Яндекс.Диске.` : "Яндекс.Диск пуст.";
-    return (query ? `Найдено в Obsidian (Яндекс.Диск):\n\n` : "Файлы и папки в Obsidian:\n\n") + results.slice(0, 20).join("\n") + (results.length > 20 ? `\n...и ещё ${results.length - 20}` : "");
+    await searchDir("", 0);
+
+    // Если есть запрос — ищем по содержимому (только в найденных по названию)
+    if (query && results.length <= 50) {
+      const contentResults = [];
+      for (const r of results.slice(0, 20)) {
+        try {
+          const dl = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/" + r.path)}`, {
+            headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+          });
+          if (dl.ok) {
+            const dd = await dl.json();
+            if (dd.href) {
+              const fileR = await fetch(dd.href);
+              const content = await fileR.text();
+              if (content.toLowerCase().includes(query.toLowerCase())) {
+                // Найти контекст вокруг совпадения
+                const idx = content.toLowerCase().indexOf(query.toLowerCase());
+                const start = Math.max(0, idx - 80);
+                const end = Math.min(content.length, idx + query.length + 120);
+                const snippet = content.slice(start, end).replace(/\n/g, " ");
+                contentResults.push(`📄 ${r.path}: ...${snippet}...`);
+              }
+            }
+          }
+        } catch {}
+      }
+      if (contentResults.length) return `Найдено в Obsidian (${contentResults.length} совпадений):\n\n` + contentResults.slice(0, 10).join("\n\n");
+    }
+
+    if (!results.length) return query ? `По запросу «${query}» ничего не найдено.` : "Obsidian пуст.";
+    
+    const list = results.slice(0, 25).map(r => typeof r === "string" ? r : `📄 ${r.path} (${(r.size/1024).toFixed(1)} КБ)`);
+    return (query ? `Найдено в Obsidian:\n\n` : "Файлы в Obsidian:\n\n") + list.join("\n") + (results.length > 25 ? `\n...и ещё ${results.length - 25}` : "");
   } catch (e) { return "Ошибка поиска: " + e.message; }
 }
 
