@@ -38,6 +38,7 @@ const YANDEX_WEATHER_KEY = process.env.YANDEX_WEATHER_KEY || config.yandexWeathe
 const YANDEX_TOKEN = process.env.YANDEX_TOKEN || config.yandexToken || "y0__wgBEP-tgu8HGNjRRiCBkbfJGDDHmb_wCGej0QbIAcrMmmU1Raw-GxbCsASh";
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN || config.pushoverToken || "";
 const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
+const PUSHOVER_USER = process.env.PUSHOVER_USER || config.pushoverUser || "";
 const BRAVE_SEARCH_KEY = process.env.BRAVE_SEARCH_KEY || config.braveSearchKey || "";
 const TAVILY_KEY = process.env.TAVILY_KEY || config.tavilyKey || "";
 const OBSIDIAN_VAULT = process.env.OBSIDIAN_VAULT || config.obsidianVault || "D:/OBSIDIAN/Leva";
@@ -91,42 +92,19 @@ async function readObsidianFile(sub) {
 }
 
 async function writeObsidianFile(sub, content) {
-  // Яндекс.Диск (основной)
-  if (YANDEX_TOKEN) {
-    try {
-      const cleanPath = sub.replace(/\\/g, "/");
-      const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=Obsidian/${cleanPath}&overwrite=true`, {
-        headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
-      });
-      const uploadD = await uploadR.json();
-      if (uploadD.href) {
-        await fetch(uploadD.href, { method: "PUT", body: content });
-        return `Записано: ${sub} (Яндекс.Диск)`;
-      }
-    } catch (e) { log("Яндекс.Диск: " + e.message); }
-  }
-  // GitHub (запасной)
-  if (GITHUB_KEY) {
-    try {
-      let sha = null;
-      try {
-        const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
-          headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-        });
-        if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
-      } catch {}
-      const body = { message: "Race: " + sub, content: Buffer.from(content).toString("base64") };
-      if (sha) body.sha = sha;
-      const r = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encodeURIComponent(sub)}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      return d.content ? `Записано: ${sub}` : "Ошибка: " + (d.message || "");
-    } catch (e) { return "Ошибка: " + e.message; }
-  }
-  return "Нет доступа к хранилищу.";
+  if (!YANDEX_TOKEN) return "Яндекс не подключён.";
+  try {
+    const cleanPath = sub.replace(/\\/g, "/");
+    const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=Obsidian/${cleanPath}&overwrite=true`, {
+      headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+    });
+    const uploadD = await uploadR.json();
+    if (uploadD.href) {
+      await fetch(uploadD.href, { method: "PUT", body: content });
+      return `Записано: ${sub}`;
+    }
+    return "Не удалось сохранить: " + (uploadD.message || "");
+  } catch (e) { return "Ошибка Яндекс.Диска: " + e.message; }
 }
 
 function listVault(sub = "") {
@@ -1572,13 +1550,22 @@ async function poll() {
         if (text.match(/вчера/i)) targetDate = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
         else if (text.match(/позавчера/i)) targetDate = new Date(now.getTime() - 172800000).toISOString().slice(0, 10);
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        // Читаем диалоги из GitHub (напрямую, не из памяти)
+        // Читаем диалоги из Яндекс.Диска
         try {
-          const rawR = await fetch(`https://raw.githubusercontent.com/clickgamechannel-source/Leva/main/${encodeURIComponent(`Диалоги/${targetDate}.md`)}`);
-          if (rawR.ok) {
-            const content = await rawR.text();
-            reply = `Диалоги за ${targetDate}:\n\n${content.slice(0, 3500)}`;
-            if (content.length > 3500) reply += `\n\n...показано 3500 из ${content.length} символов`;
+          const path = `Obsidian/Диалоги/${targetDate}.md`;
+          const downloadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(path)}`, {
+            headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+          });
+          if (downloadR.ok) {
+            const dd = await downloadR.json();
+            if (dd.href) {
+              const fileR = await fetch(dd.href);
+              if (fileR.ok) {
+                const content = await fileR.text();
+                reply = `Диалоги за ${targetDate}:\n\n${content.slice(0, 3500)}`;
+                if (content.length > 3500) reply += `\n\n...показано 3500 из ${content.length} символов`;
+              }
+            }
           } else {
             reply = `За ${targetDate} диалогов не найдено.`;
           }
@@ -1756,28 +1743,30 @@ async function poll() {
       const dialEntry = `\n\n**${new Date().toLocaleTimeString("ru-RU")}**\n> ${text.slice(0, 500)}\n\n${reply.slice(0, 500)}\n---`;
       const saveDialogue = async () => {
         try {
-          const encPath = encodeURIComponent(`Диалоги/${today}.md`);
-          let sha = null;
-          const gr = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
-            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-          });
-          if (gr.ok) { const gd = await gr.json(); sha = gd.sha; }
+          const path = `Obsidian/Диалоги/${today}.md`;
+          // Читаем существующий
           let existing = "# Диалоги\n";
-          if (sha) {
-            try {
-              const raw = await fetch(`https://raw.githubusercontent.com/${OBSIDIAN_REPO}/main/${encodeURIComponent(`Диалоги/${today}.md`)}`);
-              if (raw.ok) existing = await raw.text();
-            } catch {}
-          }
+          try {
+            const readR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(path)}`, {
+              headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+            });
+            if (readR.ok) {
+              const rd = await readR.json();
+              if (rd.href) {
+                const fileR = await fetch(rd.href);
+                if (fileR.ok) existing = await fileR.text();
+              }
+            }
+          } catch {}
+          // Записываем
           const newContent = existing + dialEntry;
-          const updateBody = { message: `Диалог ${today}`, content: Buffer.from(newContent).toString("base64") };
-          if (sha) updateBody.sha = sha;
-          const putR = await fetch(`https://api.github.com/repos/${OBSIDIAN_REPO}/contents/${encPath}`, {
-            method: "PUT",
-            headers: { Authorization: `Bearer ${GITHUB_KEY}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
-            body: JSON.stringify(updateBody),
+          const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent(path)}&overwrite=true`, {
+            headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
           });
-          if (!putR.ok) log("Ошибка сохранения диалога: " + putR.status);
+          const uploadD = await uploadR.json();
+          if (uploadD.href) {
+            await fetch(uploadD.href, { method: "PUT", body: newContent });
+          }
         } catch (e) { log("Ошибка сохранения диалога: " + e.message); }
       };
       saveDialogue().catch(e => log("Ошибка сохранения: " + e.message)); // фоном, с логом ошибок
