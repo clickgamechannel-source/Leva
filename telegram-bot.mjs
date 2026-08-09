@@ -1733,17 +1733,42 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/(?:заметк|обсидиан|obsidian|vault|память|что ты помнишь|что в памяти)/i)) {
+      if (text.match(/(?:обсидиан|obsidian|заметк|добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)/i)) {
+        // "добавь в заметку" или "добавь в обсидиан" → сохранить
+        if (text.match(/^(добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)\s+(.+)/i)) {
+          const content = text.replace(/^(добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)\s+/i, "").trim();
+          const ts = mskTime().toISOString().slice(0, 16).replace(/:/g, "-");
+          const path = `Исследования/${ts}.md`;
+          const note = `# ${content.slice(0, 50)}\n\n${content}\n\n---\n*Сохранено: ${mskTime().toLocaleString("ru-RU")}*`;
+          reply = await writeObsidianFile(path, note);
+          if (!botMemory.notes) botMemory.notes = [];
+          botMemory.notes.push({ path, content: content.slice(0, 500), time: new Date().toISOString() });
+          await saveMemory();
+          await tg("sendMessage", { chat_id: chatId, text: reply });
+          continue;
+        }
+        // "добавь это в заметки" → сохранить последний поиск
+        if (text.match(/^(добавь это в заметк|добавь это в обсидиан|сохрани это|запиши это)/i)) {
+          if (!lastSearchResult || lastSearchResult.length < 10) {
+            reply = "Нечего сохранять. Сначала попроси найти что-то в интернете.";
+          } else {
+            const ts = mskTime().toISOString().slice(0, 16).replace(/:/g, "-");
+            const path = `Исследования/${ts}.md`;
+            const note = `# Результат поиска\n\n${lastSearchResult}\n\n---\n*Сохранено: ${mskTime().toLocaleString("ru-RU")}*`;
+            reply = await writeObsidianFile(path, note);
+            if (!botMemory.notes) botMemory.notes = [];
+            botMemory.notes.push({ path, content: lastSearchResult.slice(0, 500), time: new Date().toISOString() });
+            await saveMemory();
+          }
+          await tg("sendMessage", { chat_id: chatId, text: reply });
+          continue;
+        }
+        // Поиск в Obsidian
         await saveMemory();
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        let q = text.replace(/(?:заметк|обсидиан|obsidian|vault|память|что ты помнишь|что в памяти)/gi, "").trim();
-        let result;
-        if (q.length > 1) {
-          result = await searchYandexDisk(q);
-          if (result.includes("ничего не найдено")) result = await searchObsidian(q);
-        } else {
-          result = await listObsidianNotes();
-        }
+        let q = text.replace(/(?:обсидиан|obsidian|заметк|добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан|добавь это в заметк|добавь это в обсидиан|сохрани это|запиши это|память|что ты помнишь|что в памяти|vault|найди в заметк|поищи в заметк|что в заметк|какие заметк|мои заметк)/gi, "").trim();
+        let result = q.length > 1 ? await searchYandexDisk(q) : await listObsidianNotes();
+        if (result.includes("ничего не найдено") && q.length > 1) result = await searchObsidian(q) || result;
         await tg("sendMessage", { chat_id: chatId, text: result });
         continue;
       }
