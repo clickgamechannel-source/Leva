@@ -74,7 +74,9 @@ try {
   }
 } catch {}
 
-await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
+try {
+  await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
+} catch {}
 log("Webhook удалён. long polling");
 offset = -1;
 
@@ -1128,7 +1130,7 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/^(напомни|о чём мы говорили|поищи в истории)/i)) {
+      if (text.match(/^(напомни|о чём мы говорили|поищи в истории)/i) && !text.match(/через\s+\d+|завтра|в \d|послезавтра/)) {
         const query = text.replace(/^(напомни|о чём мы говорили|поищи в истории)\s*/i, "").trim();
         if (!query) { reply = "Что напомнить? Скажи: «напомни про Mavic» или «о чём мы говорили во вторник»."; }
         else {
@@ -1419,6 +1421,31 @@ async function poll() {
         } catch (e) {
           reply = "Не удалось получить погоду. Попробуй позже.";
         }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^добавь\s+(?!в заметку|в обсидиан)(.+)/i)) {
+        const item = text.replace(/^добавь\s+/i, "").trim();
+        if (!botMemory.newItems) botMemory.newItems = [];
+        botMemory.newItems.push({ item, date: new Date().toISOString() });
+        await saveMemory();
+        reply = `Добавила в «Что нового»: ${item}`;
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^(что нового|список дел|что добавить|покажи список)/i)) {
+        if (!botMemory.newItems?.length) reply = "Список пуст. Скажи «добавь ...».";
+        else { reply = "Список дел:\n"; botMemory.newItems.forEach((n,i)=>reply+=`${i+1}. ${n.item}\n`); }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (text.match(/^убери из нового\s+(\d+)/i)) {
+        const idx = parseInt(text.match(/\d+/)[0]);
+        if (idx>0&&idx<=(botMemory.newItems?.length||0)) { const r=botMemory.newItems.splice(idx-1,1)[0];await saveMemory();reply=`Убрала: ${r.item}`; }
+        else reply="Какой номер? «что нового» покажет.";
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
