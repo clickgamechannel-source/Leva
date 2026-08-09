@@ -1592,6 +1592,27 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(скинь фото|найди фото|покажи фото|найди картинку|покажи картинку)\s+(.+)/i)) {
+        const query = text.replace(/^(скинь фото|найди фото|покажи фото|найди картинку|покажи картинку)\s+/i, "").trim();
+        await tg("sendChatAction", { chat_id: chatId, action: "upload_photo" });
+        try {
+          if (TAVILY_KEY) {
+            const r = await fetch("https://api.tavily.com/search", {
+              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${TAVILY_KEY}` },
+              body: JSON.stringify({ query, search_depth: "basic", max_results: 3, include_images: true, include_image_descriptions: true }),
+            });
+            const d = await r.json();
+            if (d.images?.length) {
+              await tg("sendPhoto", { chat_id: chatId, photo: d.images[0].url || d.images[0], caption: "«" + query + "»" });
+              reply = "Вот что нашла ⬆";
+              if (d.images.length > 1) reply += "\nЕщё: " + d.images.slice(1, 4).map(i => i.url).join("\n");
+            } else reply = `Фото «${query}» не найдено.`;
+          } else reply = "Поиск фото не настроен.";
+        } catch { reply = "Ошибка поиска."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^сколько\s+от\s+(.+?)\s+до\s+(.+)/i)) {
         const match = text.match(/^сколько\s+от\s+(.+?)\s+до\s+(.+)/i);
         const from = match[1].trim(), to = match[2].trim();
