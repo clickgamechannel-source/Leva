@@ -901,78 +901,6 @@ async function poll() {
     for (const update of data.result) {
       offset = update.update_id + 1;
 
-      // Обработка callback_query (кнопки)
-      if (update.callback_query) {
-        try {
-        const cb = update.callback_query;
-        const cbChatId = cb.message.chat.id;
-        const cbMsgId = cb.message.message_id;
-        if (cb.data.startsWith("alarm_")) {
-          const hour = parseInt(cb.data.split("_")[1]);
-          // Показываем минуты 0-59
-          const minButtons = [];
-          for (let row = 0; row < 10; row++) {
-            const rowBtns = [];
-            for (let col = 0; col < 6; col++) {
-              const min = row * 6 + col;
-              if (min < 60) rowBtns.push({ text: `${hour}:${min.toString().padStart(2,"0")}`, callback_data: `alarmmin_${hour}_${min}` });
-            }
-            if (rowBtns.length) minButtons.push(rowBtns);
-          }
-          minButtons.push([{ text: "❌ Отмена", callback_data: "alarm_cancel" }]);
-          await fetch(`${TG_API}/editMessageText`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ ${hour}:00 — выбери минуты:`, reply_markup: { inline_keyboard: minButtons } }),
-          });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        } else if (cb.data.startsWith("alarmmin_")) {
-          const parts = cb.data.split("_");
-          const hour = parseInt(parts[1]), min = parseInt(parts[2]);
-          const timeLabel = `${hour}:${min.toString().padStart(2,"0")}`;
-          await fetch(`${TG_API}/editMessageText`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              chat_id: cbChatId, message_id: cbMsgId,
-              text: `⏰ Выбрано: ${timeLabel}\n\nЗавести будильник на это время?`,
-              reply_markup: { inline_keyboard: [
-                [{ text: "✅ Принять", callback_data: `alarmset_${hour}_${min}` }, { text: "❌ Отказаться", callback_data: "alarm_cancel" }]
-              ]}
-            }),
-          });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        } else if (cb.data.startsWith("alarmset_")) {
-          const parts = cb.data.split("_");
-          const hour = parseInt(parts[1]), min = parseInt(parts[2]);
-          const target = new Date(mskTime().getFullYear(), mskTime().getMonth(), mskTime().getDate(), hour, min, 0);
-          const nowMSK = mskTime();
-          if (target <= nowMSK) target.setDate(target.getDate() + 1);
-          if (!botMemory.reminders) botMemory.reminders = [];
-          botMemory.reminders.push({ time: fromMSK(target).toISOString(), message: "Будильник", chatId: cbChatId, created: new Date().toISOString(), sound: "alien" });
-          await saveMemory();
-          const timeLabel = `${hour}:${min.toString().padStart(2,"0")}`;
-          const wishes = ["😴 Сладких снов!", "🌙 Спокойной ночи!", "💤 Пусть снятся добрые сны!", "🌟 Завтра будет отличный день!", "🛌 Выспись хорошенько!"];
-          await fetch(`${TG_API}/editMessageText`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ Будильник на ${timeLabel} заведён!\n\n${wishes[Math.floor(Math.random()*wishes.length)]}` }),
-          });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Будильник установлен!" });
-        } else if (cb.data === "alarm_cancel") {
-          await fetch(`${TG_API}/editMessageText`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: "❌ Будильник отменён" }),
-          });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        } else if (cb.data.startsWith("weather_")) {
-          const parts = cb.data.split("_");
-          const lat = parseFloat(parts[1]), lon = parseFloat(parts[2]), name = parts.slice(3).join(" ");
-          const w = await getWeather3Day(lat, lon, name);
-          await tg("editMessageText", { chat_id: cbChatId, message_id: cbMsgId, text: w.slice(0, 4000) });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id });
-        }
-        continue;
-        } catch (e) { log("Callback error: " + e.message); continue; }
-      }
-
       const msg = update.message || update.edited_message;
       if (!msg) continue;
 
@@ -1285,41 +1213,14 @@ async function poll() {
       }
 
       if (text === "/alarm" || text.match(/^будильник$/i)) {
-        const buttons = [];
-        for (let row = 0; row < 4; row++) {
-          const rowBtns = [];
-          for (let col = 0; col < 6; col++) {
-            const hour = row * 6 + col + 1;
-            if (hour <= 24) rowBtns.push({ text: `${hour}:00`, callback_data: `alarm_${hour}` });
-          }
-          buttons.push(rowBtns);
-        }
-        buttons.push([{ text: "❌ Отмена", callback_data: "alarm_cancel" }]);
-        await fetch(`${TG_API}/sendMessage`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: "⏰ Выбери час для будильника:",
-            reply_markup: { inline_keyboard: buttons },
-          }),
-        });
+        reply = "⏰ Будильник. Примеры:\n• будильник на 7:30 подъём\n• будильник в 9:00 работа каждый день\n• мои напоминания — посмотреть все";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
 
       if (text === "/weather" || text === "погода") {
-        await fetch(`${TG_API}/sendMessage`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: "📍 Выбери город:",
-            reply_markup: { inline_keyboard: [
-              [{ text: "🏙 Москва", callback_data: "weather_55.75_37.62_Moscow" }],
-              [{ text: "🏠 Луганск", callback_data: "weather_48.57_39.31_Lugansk" }],
-              [{ text: "🏘 Лисичанск", callback_data: "weather_48.90_38.44_Lisichansk" }],
-              [{ text: "🌳 Рай-Александровка", callback_data: "weather_48.81_37.85_RayAleksandrovka" }],
-            ]}
-          }),
-        });
+        reply = await fetchWeather(48.81, 37.85, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
 
