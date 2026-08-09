@@ -74,15 +74,10 @@ try {
   }
 } catch {}
 
-let conflictCount = 0;
 try {
   await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
 } catch {}
-// Ждём чтобы старые экземпляры умерли
-log("Жду 30с для очистки старых соединений...");
-await delay(30000);
 offset = -1;
-log("Запуск...");
 
 async function readObsidianFile(sub) {
   if (!GITHUB_KEY) return "Obsidian Git не настроен.";
@@ -943,12 +938,9 @@ async function poll() {
 
     if (!data.ok) {
       if (data.description && data.description.includes("Conflict")) {
-        conflictCount++;
-        if (conflictCount > 5) { log("Слишком много конфликтов — выхожу."); process.exit(0); }
         await delay(5000);
         return;
       }
-      conflictCount = 0;
       log("Telegram error: " + data.description);
       await delay(10000);
       return;
