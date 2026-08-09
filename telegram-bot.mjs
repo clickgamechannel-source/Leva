@@ -620,56 +620,12 @@ const yandexWeatherMap = { "clear": "Ясно", "partly-cloudy": "Малообл
 const weatherEmoji = { "clear": "☀️", "partly-cloudy": "🌤", "cloudy": "☁️", "overcast": "☁️", "drizzle": "🌦", "light-rain": "🌧", "rain": "🌧", "heavy-rain": "⛈", "showers": "🌧", "wet-snow": "🌨", "light-snow": "❄️", "snow": "❄️", "hail": "🌨", "thunderstorm": "⛈", "thunderstorm-with-rain": "⛈" };
 const periodEmoji = { morning: "🌅", day: "☀️", evening: "🌆", night: "🌙" };
 
-async function fetchWeather(lat, lon, name, yandexKey) {
-  try {
-    if (yandexKey) {
-      const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=1&hours=false`, { headers: { "X-Yandex-Weather-Key": yandexKey }, signal: AbortSignal.timeout(8000) });
-      if (r.ok) {
-        const d = await r.json();
-        const f = d.fact;
-        const cond = yandexWeatherMap[f.condition] || f.condition;
-        const windNames = { nw: "северо-западный", n: "северный", ne: "северо-восточный", e: "восточный", se: "юго-восточный", s: "южный", sw: "юго-западный", w: "западный", c: "штиль" };
-        const emoji = weatherEmoji[f.condition] || "🌡";
-        const windDir = windNames[f.wind_dir] || f.wind_dir;
-        const windSpeed = f.wind_speed;
+async function getWeather3Day(lat, lon, name) {
 
-        const phrases = {
-          hot: ["🥵 Жарковато!", "☀️ Печёт как в духовке!", "🧴 Не забудь крем от солнца!"],
-          warm: ["😎 Комфортно, самое то для прогулки!", "🌤 Отличная погода для дел!", "⚡ Бодрое утро!"],
-          cool: ["🍂 Прохладно, самое то для кофе!", "🧥 Лёгкая куртка не помешает", "🌬 Свежо и бодрит!"],
-          cold: ["🥶 Холодно, береги руки!", "❄️ Зима близко!", "🧤 Без шапки никуда!"],
-        };
-        let phrase = "";
-        if (f.temp > 30) phrase = phrases.hot[Math.floor(Math.random() * phrases.hot.length)];
-        else if (f.temp > 20) phrase = phrases.warm[Math.floor(Math.random() * phrases.warm.length)];
-        else if (f.temp > 10) phrase = phrases.cool[Math.floor(Math.random() * phrases.cool.length)];
-        else phrase = phrases.cold[Math.floor(Math.random() * phrases.cold.length)];
-
-        let reply = `${emoji} ${name}: ${cond}, ${f.temp}°C (ощущается ${f.feels_like}°C)\n💨 Ветер ${windDir}, ${windSpeed} м/с`;
-        if (windSpeed < 1) reply += " — штиль, безветренно";
-        else if (windSpeed < 4) reply += " — лёгкий ветерок";
-        else if (windSpeed < 8) reply += " — умеренный";
-        else if (windSpeed < 12) reply += " — крепкий, держись за шапку";
-        else if (windSpeed < 18) reply += " — сильный, сносит с ног";
-        else reply += " — ураган! Лучше дома";
-        reply += `\n${phrase}`;
-        if (f.condition?.includes("rain")) reply += "\n☂️ Зонт пригодится!";
-
-        return reply;
-      }
-    }
-  } catch {}
-  // Open-Meteo fallback
-  const w = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=auto&forecast_days=3`);
-  const wd = await w.json();
-  const c = wd.current;
-  let reply = `Погода в ${name}:\n\nСейчас: ${weatherMap[c.weather_code] || "—"}, ${c.temperature_2m}°C (ощущается ${c.apparent_temperature}°C)\nВетер: ${c.wind_speed_10m} м/с\nВлажность: ${c.relative_humidity_2m}%\n\nПрогноз:\n`;
-  for (let i = 0; i < Math.min(3, wd.daily.time.length); i++) {
-    reply += `${wd.daily.time[i]}: ${wd.daily.temperature_2m_min[i]}°C / ${wd.daily.temperature_2m_max[i]}°C, осадки ${wd.daily.precipitation_probability_max[i]}%, ветер ${wd.daily.wind_speed_10m_max[i]} м/с\n`;
-  }
-  return reply;
+async function fetchWeather(lat, lon, name, key) {
+  const w = await getWeather3Day(lat, lon, name);
+  return w.split("📅")[0]?.trim() || w.slice(0, 200);
 }
-
 async function downloadVoice(fileId) {
   const r = await fetch(`${TG_API}/getFile?file_id=${fileId}`);
   const d = await r.json();
@@ -1010,6 +966,12 @@ async function poll() {
             body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: "❌ Будильник отменён" }),
           });
           await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        } else if (cb.data.startsWith("weather_")) {
+          const parts = cb.data.split("_");
+          const lat = parseFloat(parts[1]), lon = parseFloat(parts[2]), name = parts.slice(3).join(" ");
+          const w = await getWeather3Day(lat, lon, name);
+          await tg("editMessageText", { chat_id: cbChatId, message_id: cbMsgId, text: w.slice(0, 4000) });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id });
         }
         continue;
       }
@@ -1348,8 +1310,19 @@ async function poll() {
       }
 
       if (text === "/weather" || text === "погода") {
-        reply = await fetchWeather(48.81, 37.85, "Рай-Александровка, ДНР", YANDEX_WEATHER_KEY);
-        await tg("sendMessage", { chat_id: chatId, text: reply });
+        await fetch(`${TG_API}/sendMessage`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: "📍 Выбери город:",
+            reply_markup: { inline_keyboard: [
+              [{ text: "🏙 Москва", callback_data: "weather_55.75_37.62_Moscow" }],
+              [{ text: "🏠 Луганск", callback_data: "weather_48.57_39.31_Lugansk" }],
+              [{ text: "🏘 Лисичанск", callback_data: "weather_48.90_38.44_Lisichansk" }],
+              [{ text: "🌳 Рай-Александровка", callback_data: "weather_48.81_37.85_RayAleksandrovka" }],
+            ]}
+          }),
+        });
         continue;
       }
 
@@ -2169,3 +2142,5 @@ main().catch((e) => {
   log("FATAL: " + (e.message || e), e);
   process.exit(1);
 });
+
+}
