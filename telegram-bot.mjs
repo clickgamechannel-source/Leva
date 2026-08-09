@@ -971,15 +971,37 @@ async function poll() {
       if (update.callback_query) {
         const cb = update.callback_query;
         const cbChatId = cb.message.chat.id;
+        const cbMsgId = cb.message.message_id;
         if (cb.data.startsWith("alarm_")) {
           const hour = parseInt(cb.data.split("_")[1]);
-          const target = new Date(mskTime().getFullYear(), mskTime().getMonth(), mskTime().getDate(), hour, 0, 0);
+          // Показываем минуты
+          const minButtons = [];
+          for (let row = 0; row < 4; row++) {
+            const rowBtns = [];
+            for (let col = 0; col < 3; col++) {
+              const min = (row * 3 + col) * 5;
+              if (min < 60) rowBtns.push({ text: `${hour}:${min.toString().padStart(2,"0")}`, callback_data: `alarmmin_${hour}_${min}` });
+            }
+            minButtons.push(rowBtns);
+          }
+          await fetch(`${TG_API}/editMessageText`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ ${hour}:00 — выбери минуты:`, reply_markup: { inline_keyboard: minButtons } }),
+          });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        } else if (cb.data.startsWith("alarmmin_")) {
+          const parts = cb.data.split("_");
+          const hour = parseInt(parts[1]), min = parseInt(parts[2]);
+          const target = new Date(mskTime().getFullYear(), mskTime().getMonth(), mskTime().getDate(), hour, min, 0);
           const nowMSK = mskTime();
           if (target <= nowMSK) target.setDate(target.getDate() + 1);
           if (!botMemory.reminders) botMemory.reminders = [];
           botMemory.reminders.push({ time: fromMSK(target).toISOString(), message: "Будильник", chatId: cbChatId, created: new Date().toISOString(), sound: "alien" });
           await saveMemory();
-          await tg("sendMessage", { chat_id: cbChatId, text: `⏰ Будильник на ${hour}:00 установлен` });
+          await fetch(`${TG_API}/editMessageText`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ Будильник на ${hour}:${min.toString().padStart(2,"0")} установлен!` }),
+          });
           await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Готово!" });
         }
         continue;
@@ -1297,19 +1319,21 @@ async function poll() {
       }
 
       if (text === "/alarm" || text.match(/^будильник$/i)) {
-        const hours = Array.from({length: 12}, (_, i) => [{ text: `${i+7 > 12 ? i+7-12 : i+7}:00`, callback_data: `alarm_${i+7}` }]);
-        // Показываем клавиатуру с часами
+        const buttons = [];
+        for (let row = 0; row < 4; row++) {
+          const rowBtns = [];
+          for (let col = 0; col < 6; col++) {
+            const hour = row * 6 + col + 1;
+            if (hour <= 24) rowBtns.push({ text: `${hour}:00`, callback_data: `alarm_${hour}` });
+          }
+          buttons.push(rowBtns);
+        }
         await fetch(`${TG_API}/sendMessage`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             chat_id: chatId,
             text: "⏰ Выбери час для будильника:",
-            reply_markup: { inline_keyboard: [
-              [{ text: "7:00", callback_data: "alarm_7" }, { text: "8:00", callback_data: "alarm_8" }, { text: "9:00", callback_data: "alarm_9" }],
-              [{ text: "10:00", callback_data: "alarm_10" }, { text: "11:00", callback_data: "alarm_11" }, { text: "12:00", callback_data: "alarm_12" }],
-              [{ text: "13:00", callback_data: "alarm_13" }, { text: "14:00", callback_data: "alarm_14" }, { text: "15:00", callback_data: "alarm_15" }],
-              [{ text: "16:00", callback_data: "alarm_16" }, { text: "17:00", callback_data: "alarm_17" }, { text: "18:00", callback_data: "alarm_18" }],
-            ]}
+            reply_markup: { inline_keyboard: buttons },
           }),
         });
         continue;
