@@ -621,6 +621,34 @@ const weatherEmoji = { "clear": "☀️", "partly-cloudy": "🌤", "cloudy": "�
 const periodEmoji = { morning: "🌅", day: "☀️", evening: "🌆", night: "🌙" };
 
 async function getWeather3Day(lat, lon, name) {
+  try {
+    const r = await fetch(`https://api.weather.yandex.ru/v2/forecast?lat=${lat}&lon=${lon}&lang=ru_RU&limit=3`, {
+      headers: { "X-Yandex-Weather-Key": YANDEX_WEATHER_KEY }, signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return "Погода недоступна.";
+    const d = await r.json();
+    const f = d.fact;
+    const cond = yandexWeatherMap[f.condition] || f.condition;
+    const windNames = { nw: "С-З", n: "С", ne: "С-В", e: "В", se: "Ю-В", s: "Ю", sw: "Ю-З", w: "З", c: "штиль" };
+    let reply = `${weatherEmoji[f.condition]||"🌡"} ${name}: ${cond}, ${f.temp}°C (${f.feels_like}°C)\n💨 ${windNames[f.wind_dir]||f.wind_dir} ${f.wind_speed} м/с\n\n`;
+    const periods = { morning: "🌅 Утро", day: "☀️ День", evening: "🌆 Вечер", night: "🌙 Ночь" };
+    const dayNames = ["Сегодня", "Завтра", "Послезавтра"];
+    for (let di = 0; di < Math.min(3, d.forecasts?.length || 0); di++) {
+      const day = d.forecasts[di];
+      reply += `📅 ${dayNames[di]} (${day.date}):\n`;
+      for (const [part, label] of Object.entries(periods)) {
+        const p = day.parts?.[part];
+        if (p) {
+          const wc = yandexWeatherMap[p.condition] || p.condition;
+          let comment = p.condition?.includes("rain") ? "☂️" : p.condition?.includes("snow") ? "❄️" : p.temp_max > 28 ? "🔥" : p.temp_min < 5 ? "🥶" : "";
+          reply += `  ${label}: ${weatherEmoji[p.condition]||""} ${p.temp_min}–${p.temp_max}°C, 💨 ${windNames[p.wind_dir]||p.wind_dir} ${p.wind_speed} м/с ${comment}\n`;
+        }
+      }
+      reply += "\n";
+    }
+    return reply;
+  } catch { return "Ошибка прогноза."; }
+}
 
 async function fetchWeather(lat, lon, name, key) {
   const w = await getWeather3Day(lat, lon, name);
@@ -2142,5 +2170,3 @@ main().catch((e) => {
   log("FATAL: " + (e.message || e), e);
   process.exit(1);
 });
-
-}
