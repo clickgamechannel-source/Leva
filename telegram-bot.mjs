@@ -1736,11 +1736,17 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|поищи в памяти|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|память|что ты помнишь|что в памяти|истори|диалог|о чём мы говорили)/i)) {
+      if (text.match(/(?:заметк|обсидиан|obsidian|vault|память|что ты помнишь|что в памяти)/i)) {
         await saveMemory();
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        const q = text.replace(/(?:обсидиан|obsidian|заметк| vault|что у тебя есть|что ты знаешь|поищи в заметк|посмотри в заметк|что в заметк|какие заметк|мои заметк|в обсидиане|по обсидиану)/gi, "").trim();
-        let result = q && q.length > 1 ? await searchObsidian(q) : await listObsidianNotes();
+        let q = text.replace(/(?:заметк|обсидиан|obsidian|vault|память|что ты помнишь|что в памяти)/gi, "").trim();
+        let result;
+        if (q.length > 1) {
+          result = await searchYandexDisk(q);
+          if (result.includes("ничего не найдено")) result = await searchObsidian(q);
+        } else {
+          result = await listObsidianNotes();
+        }
         await tg("sendMessage", { chat_id: chatId, text: result });
         continue;
       }
@@ -1783,9 +1789,9 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)/i)) {
-        const query = text.replace(/^(найди в интернете|поищи|search|найди товар|найди где купить|найди цену|поиск товара)\s*/i, "").trim();
-        if (!query) { reply = "Что искать? Пример: найди в интернете DJI Mavic 3 цена"; }
+      if (text.match(/^(найди|поищи|расскажи|ищи)\s+/i) || text.match(/^(найди в интернете|поищи в интернете|search)/i)) {
+        let query = text.replace(/^(найди|поищи|расскажи|ищи|найди в интернете|поищи в интернете|search)\s+/i, "").trim();
+        if (!query) { reply = "Что искать? Пример: найди курс доллара"; }
         else {
           await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
