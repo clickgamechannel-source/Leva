@@ -919,6 +919,10 @@ async function poll() {
       if (msg.message_id <= lastMessageId) continue;
       lastMessageId = msg.message_id;
 
+      // Защита от дублирования
+      if (msg.message_id <= lastMessageId) continue;
+      lastMessageId = msg.message_id;
+
       const chatId = msg.chat.id;
       const userId = msg.from?.id || chatId;
 
@@ -1256,17 +1260,21 @@ async function poll() {
 
       // Парсер ссылок
       const urlMatch = text.match(/(https?:\/\/[^\s]+)/i);
-      if (urlMatch) {
+      if (urlMatch && text.length < 300) {
         const url = urlMatch[1];
-        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
-        try {
-          const jinaR = await fetch("https://r.jina.ai/" + url, { headers: { Accept: "text/markdown" } });
-          if (jinaR.ok) {
-            const content = await jinaR.text();
-            const summary = await analyzeText(content.slice(0, 5000), "Перескажи кратко содержание статьи. Выдели главное. На русском.");
-            reply = `📄 ${url}\n\n${summary}`;
-          } else reply = "Не удалось прочитать страницу.";
-        } catch { reply = "Ошибка чтения ссылки."; }
+        if (url.includes("yandex") || url.includes("disk.yandex")) {
+          reply = "Ссылки на Яндекс.Диск я не могу читать — нужен вход в аккаунт.";
+        } else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          try {
+            const jinaR = await fetch("https://r.jina.ai/" + url, { headers: { Accept: "text/markdown" } });
+            if (jinaR.ok) {
+              const content = await jinaR.text();
+              const summary = await analyzeText(content.slice(0, 4000), "Перескажи кратко содержание. Выдели главное. На русском.");
+              reply = `📄 ${url}\n\n${summary}`;
+            } else reply = "Не удалось прочитать страницу.";
+          } catch { reply = "Ошибка чтения ссылки."; }
+        }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
