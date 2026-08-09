@@ -1525,6 +1525,29 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(удали заметку|удали файл|удали из обсидиан|удали страницу)\s+(.+)/i)) {
+        const target = text.replace(/^(удали заметку|удали файл|удали из обсидиан|удали страницу)\s+/i, "").trim();
+        if (!YANDEX_TOKEN) reply = "Яндекс.Диск не подключён.";
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          const found = await searchYandexDisk(target);
+          if (found.includes("ничего не найдено")) reply = `Файл «${target}» не найден.`;
+          else {
+            const match = found.match(/📄\s+(\S+\.md)/);
+            if (match) {
+              try {
+                const delR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian/" + match[1])}&permanently=true`, {
+                  method: "DELETE", headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+                });
+                reply = delR.ok || delR.status === 204 ? `Удалила: ${match[1]}` : "Не удалось удалить.";
+              } catch { reply = "Ошибка удаления."; }
+            } else reply = "Нашла несколько файлов. Уточни какой:\n" + found.slice(0, 500);
+          }
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/^переведи\s+(.+)/i)) {
         const rest = text.replace(/^переведи\s+/i, "");
         const langMatch = rest.match(/^(?:на\s+)?(английский|english|русский|russian|китайский|chinese|немецкий|german|испанский|spanish|французский|french|итальянский|italian)/i);
