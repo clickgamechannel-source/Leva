@@ -930,15 +930,15 @@ async function poll() {
         const cbMsgId = cb.message.message_id;
         if (cb.data.startsWith("alarm_")) {
           const hour = parseInt(cb.data.split("_")[1]);
-          // Показываем минуты
+          // Показываем минуты 0-59
           const minButtons = [];
-          for (let row = 0; row < 4; row++) {
+          for (let row = 0; row < 10; row++) {
             const rowBtns = [];
-            for (let col = 0; col < 3; col++) {
-              const min = (row * 3 + col) * 5;
+            for (let col = 0; col < 6; col++) {
+              const min = row * 6 + col;
               if (min < 60) rowBtns.push({ text: `${hour}:${min.toString().padStart(2,"0")}`, callback_data: `alarmmin_${hour}_${min}` });
             }
-            minButtons.push(rowBtns);
+            if (rowBtns.length) minButtons.push(rowBtns);
           }
           minButtons.push([{ text: "❌ Отмена", callback_data: "alarm_cancel" }]);
           await fetch(`${TG_API}/editMessageText`, {
