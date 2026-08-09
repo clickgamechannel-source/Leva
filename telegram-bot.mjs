@@ -1733,7 +1733,7 @@ async function poll() {
         continue;
       }
 
-      if (text.match(/(?:обсидиан|obsidian|заметк|добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)/i)) {
+      if (text.match(/(?:обсидиан|obsidian|заметк|добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)/i) && !text.match(/^(найди|поищи|расскажи|ищи)\s+/i)) {
         // "добавь в заметку" или "добавь в обсидиан" → сохранить
         if (text.match(/^(добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)\s+(.+)/i)) {
           const content = text.replace(/^(добавь в заметк|добавь в обсидиан|сохрани в заметк|сохрани в обсидиан)\s+/i, "").trim();
@@ -1824,6 +1824,28 @@ async function poll() {
       if (text.match(/(?:курс|валют|юан|доллар|евро|рубл|cny|usd|eur|rub)\s+(?:к |в |на |по |)/i) && text.length < 120) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         reply = await getExchangeRates(text);
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Сообщение содержит и поиск, и добавление в заметки
+      if ((text.match(/^(найди|поищи|расскажи|ищи)\s+/i)) && text.match(/(?:добавь|сохран|запиши|заметк|обсидиан)/i)) {
+        let query = text.replace(/^(найди|поищи|расскажи|ищи)\s+/i, "").replace(/\s*(?:и добавь|добавь|сохран|запиши).*/i, "").trim();
+        if (!query) { reply = "Что найти? Пример: найди информацию про X и добавь в заметки"; }
+        else {
+          await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+          reply = await webSearch(query);
+          lastSearchResult = reply;
+          // Автосохранение в Obsidian
+          const ts = mskTime().toISOString().slice(0, 16).replace(/:/g, "-");
+          const path = `Исследования/${ts}.md`;
+          const note = `# ${query.slice(0, 50)}\n\n${reply}\n\n---\n*Сохранено: ${mskTime().toLocaleString("ru-RU")}*`;
+          const saveResult = await writeObsidianFile(path, note);
+          if (!botMemory.notes) botMemory.notes = [];
+          botMemory.notes.push({ path, content: reply.slice(0, 500), time: new Date().toISOString() });
+          await saveMemory();
+          reply += "\n\n📁 " + saveResult;
+        }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
