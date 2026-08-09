@@ -54,6 +54,7 @@ const pendingResearch = new Map();
 const voicePref = new Map();
 const alarmPending = new Map();
 let lastSearchResult = "";
+let lastMessageId = 0;
 let offset = 0;
 
 function addToContext(userId, userMsg, botReply) {
@@ -902,6 +903,10 @@ async function poll() {
       const msg = update.message || update.edited_message;
       if (!msg) continue;
 
+      // Защита от дублирования — пропускаем уже обработанное
+      if (msg.message_id <= lastMessageId) continue;
+      lastMessageId = msg.message_id;
+
       const chatId = msg.chat.id;
       const userId = msg.from?.id || chatId;
 
@@ -992,13 +997,6 @@ async function poll() {
       if (!text) continue;
 
       log(`<- [${userId}] ${text.slice(0, 80)}`);
-
-      if (msg.chat.type !== "private") {
-        if (!botMemory.groupMessages) botMemory.groupMessages = [];
-        botMemory.groupMessages.push({ chat: msg.chat.title || "", from: msg.from?.first_name || "", text: text.slice(0, 300), time: new Date().toISOString() });
-        if (botMemory.groupMessages.length > 500) botMemory.groupMessages = botMemory.groupMessages.slice(-500);
-        continue;
-      }
 
       if (text === "/start") {
         await tg("sendMessage", { chat_id: chatId, text: `Привет! Я OpenCode (DeepSeek V4 Pro).\n\nЯ понимаю естественную речь:\n• «найди инфу про...» — найду и сохраню в Obsidian\n• «добавь в заметку ...» — запишу\n• «прочитай заметку ...» — покажу\n\nКоманды: /clear /model /vault` });
