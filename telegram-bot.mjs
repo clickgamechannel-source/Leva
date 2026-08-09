@@ -52,6 +52,7 @@ const DS_API = "https://api.deepseek.com/chat/completions";
 const context = new Map();
 const pendingResearch = new Map();
 const voicePref = new Map();
+const alarmPending = new Map();
 let lastSearchResult = "";
 let offset = 0;
 
@@ -1210,7 +1211,28 @@ async function poll() {
       }
 
       if (text === "/alarm" || text.match(/^будильник$/i)) {
-        reply = "⏰ Будильник. Примеры:\n• будильник на 7:30 подъём\n• будильник в 9:00 работа каждый день\n• мои напоминания — посмотреть все";
+        alarmPending.set(userId, true);
+        reply = "⏰ На сколько поставить будильник?\n\nНапиши время, например: 7:30 или 21:00\n\n🌙 Я подберу самые тёплые пожелания ко сну!";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      if (alarmPending.has(userId)) {
+        alarmPending.delete(userId);
+        const match = text.match(/(\d{1,2})[:.](\d{2})/);
+        if (match) {
+          const h = parseInt(match[1]), m = parseInt(match[2]);
+          if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+            const nowMSK = mskTime();
+            let t = new Date(nowMSK.getFullYear(), nowMSK.getMonth(), nowMSK.getDate(), h, m, 0);
+            if (t <= nowMSK) t.setDate(t.getDate() + 1);
+            if (!botMemory.reminders) botMemory.reminders = [];
+            botMemory.reminders.push({ time: fromMSK(t).toISOString(), message: "Будильник", chatId: defaultChatId, created: new Date().toISOString(), sound: "alien" });
+            await saveMemory();
+            const wishes = ["😴 Сладких снов!", "🌙 Спокойной ночи!", "💤 Пусть снятся добрые сны!", "🌟 Завтра будет отличный день!", "🛌 Выспись хорошенько!", "🌜 Пусть ночь будет тёплой!", "✨ Ты заслужил хороший отдых!"];
+            reply = `⏰ Будильник на ${h.toString().padStart(2,"0")}:${m.toString().padStart(2,"0")} установлен!\n\n${wishes[Math.floor(Math.random()*wishes.length)]}`;
+          } else { reply = "Время должно быть от 0:00 до 23:59. Попробуй ещё раз."; alarmPending.set(userId, true); }
+        } else { reply = "Не поняла время. Напиши в формате ЧЧ:ММ, например 7:30. Попробуй ещё раз."; alarmPending.set(userId, true); }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
