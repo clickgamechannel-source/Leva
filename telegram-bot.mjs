@@ -342,9 +342,9 @@ async function deepseekChat(userId, text) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-4)],
-      max_tokens: 800,
-      temperature: 0.7,
+      messages: [{ role: "system", content: system }, ...messages.slice(-3)],
+      max_tokens: 600,
+      temperature: 0.8,
     }),
   });
 
