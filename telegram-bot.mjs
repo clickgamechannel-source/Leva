@@ -984,17 +984,34 @@ async function poll() {
         } else if (cb.data.startsWith("alarmmin_")) {
           const parts = cb.data.split("_");
           const hour = parseInt(parts[1]), min = parseInt(parts[2]);
+          const timeLabel = `${hour}:${min.toString().padStart(2,"0")}`;
+          await fetch(`${TG_API}/editMessageText`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: cbChatId, message_id: cbMsgId,
+              text: `⏰ Выбрано: ${timeLabel}\n\nЗавести будильник на это время?`,
+              reply_markup: { inline_keyboard: [
+                [{ text: "✅ Принять", callback_data: `alarmset_${hour}_${min}` }, { text: "❌ Отказаться", callback_data: "alarm_cancel" }]
+              ]}
+            }),
+          });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id });
+        } else if (cb.data.startsWith("alarmset_")) {
+          const parts = cb.data.split("_");
+          const hour = parseInt(parts[1]), min = parseInt(parts[2]);
           const target = new Date(mskTime().getFullYear(), mskTime().getMonth(), mskTime().getDate(), hour, min, 0);
           const nowMSK = mskTime();
           if (target <= nowMSK) target.setDate(target.getDate() + 1);
           if (!botMemory.reminders) botMemory.reminders = [];
           botMemory.reminders.push({ time: fromMSK(target).toISOString(), message: "Будильник", chatId: cbChatId, created: new Date().toISOString(), sound: "alien" });
           await saveMemory();
+          const timeLabel = `${hour}:${min.toString().padStart(2,"0")}`;
+          const wishes = ["😴 Сладких снов!", "🌙 Спокойной ночи!", "💤 Пусть снятся добрые сны!", "🌟 Завтра будет отличный день!", "🛌 Выспись хорошенько!"];
           await fetch(`${TG_API}/editMessageText`, {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ Будильник на ${hour}:${min.toString().padStart(2,"0")} установлен!` }),
+            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ Будильник на ${timeLabel} заведён!\n\n${wishes[Math.floor(Math.random()*wishes.length)]}` }),
           });
-          await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Готово!" });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Будильник установлен!" });
         } else if (cb.data === "alarm_cancel") {
           await fetch(`${TG_API}/editMessageText`, {
             method: "POST", headers: { "Content-Type": "application/json" },
