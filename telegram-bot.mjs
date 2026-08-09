@@ -887,12 +887,9 @@ async function poll() {
 
     if (!data.ok) {
       if (data.description && data.description.includes("Conflict")) {
-        conflictCount = (conflictCount || 0) + 1;
-        if (conflictCount > 3) { log("Уступаю новому экземпляру."); process.exit(0); }
         await delay(3000);
         return;
       }
-      conflictCount = 0;
       log("Telegram error: " + data.description);
       await delay(10000);
       return;
