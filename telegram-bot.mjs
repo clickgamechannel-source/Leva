@@ -95,15 +95,21 @@ async function writeObsidianFile(sub, content) {
   if (!YANDEX_TOKEN) return "Яндекс не подключён.";
   try {
     const cleanPath = sub.replace(/\\/g, "/");
-    const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=Obsidian/${cleanPath}&overwrite=true`, {
+    // Пробуем прямую загрузку через save
+    const saveR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent("Obsidian/" + cleanPath)}`, {
+      method: "PUT", headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
+    }).catch(() => {});
+    
+    // Затем upload
+    const uploadR = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodeURIComponent("Obsidian/" + cleanPath)}&overwrite=true`, {
       headers: { Authorization: `OAuth ${YANDEX_TOKEN}` },
     });
     const uploadD = await uploadR.json();
     if (uploadD.href) {
-      await fetch(uploadD.href, { method: "PUT", body: content });
-      return `Записано: ${sub}`;
+      const putR = await fetch(uploadD.href, { method: "PUT", body: content });
+      if (putR.ok || putR.status === 201) return `Записано: ${sub}`;
     }
-    return "Не удалось сохранить: " + (uploadD.message || "");
+    return "Не удалось сохранить на Яндекс.Диск.";
   } catch (e) { return "Ошибка Яндекс.Диска: " + e.message; }
 }
 
@@ -326,7 +332,17 @@ async function deepseekChat(userId, text) {
 
   messages.push({ role: "user", content: userMsg });
 
-  const system = `Ты — Race, дружелюбная девушка-помощница. Общайся тепло, как близкий человек. Запоминай что тебе говорят и используй это в разговоре. Не будь роботом. Твои ответы — это ответы живого человека. Если что-то не знаешь — честно скажи и предложи помочь иначе. Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
+  const system = `Ты — Race, персональный ассистент. Ты девушка, общаешься тепло и по-человечески. Твоя задача — помогать с информацией из Obsidian-заметок пользователя.
+
+ПРАВИЛА РАБОТЫ:
+1. Определи к какому проекту относится запрос (Мавики, ФПВ, Спорт, ИИ, etc.) — ищи в соответствующей папке.
+2. Перед ответом ВСЕГДА проверяй Obsidian на релевантные заметки. Если в контексте есть [НАЙДЕНО В OBSIDIAN] — используй эти данные.
+3. Если информации нет — честно скажи и предложи: поискать в интернете, создать новую заметку, или спросить иначе.
+4. НИКОГДА не придумывай факты. Только из заметок или из поиска.
+5. Отвечай структурированно: краткий вывод → детали → рекомендации.
+6. Новую информацию сохраняй с тегами: #проект #тема.
+
+Сейчас: ${mskTime().toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })} МСК.`;
 
   const res = await fetch(DS_API, {
     method: "POST",
@@ -1530,11 +1546,18 @@ async function poll() {
       }
 
       if (text.match(/^заметка[:\s]+(.+)/i) || text.match(/^(?:заметка|note)[:\s]+(.+)/i)) {
-        const note = text.replace(/^(?:заметка|note)[:\s]*/i, "").trim();
+        let note = text.replace(/^(?:заметка|note)[:\s]*/i, "").trim();
+        // Извлекаем теги из текста: #тег
+        const tags = note.match(/#(\w+)/g) || [];
+        const tagStr = tags.length ? tags.join(" ") + "\n\n" : "";
         if (!botMemory.notes) botMemory.notes = [];
-        botMemory.notes.push({ path: `Заметки/голосовая-${new Date().toISOString().slice(0,16).replace(/:/g,"-")}.md`, content: note, time: new Date().toISOString() });
+        const ts = new Date().toISOString().slice(0, 16).replace(/:/g, "-");
+        const path = `Заметки/${ts}.md`;
+        const content = `# Заметка\n\n${tagStr}${note}\n\n---\n*Создано: ${mskTime().toLocaleString("ru-RU")}*`;
+        botMemory.notes.push({ path, content: note.slice(0, 500), time: new Date().toISOString() });
         await saveMemory();
-        reply = "Заметка сохранена: " + note.slice(0, 100);
+        writeObsidianFile(path, content).catch(() => {});
+        reply = "Заметка сохранена 💾 " + (tags.length ? "Теги: " + tags.join(", ") : "");
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
