@@ -322,15 +322,6 @@ async function deepseekChat(userId, text) {
   const messages = context.get(userId);
 
   let userMsg = text;
-  // Ищем в Яндекс.Диске релевантные заметки
-  if (text.length > 10 && !text.startsWith("/") && !text.match(/^(привет|пока|да|нет|спс|ок|ясно)/i)) {
-    try {
-      const vaultInfo = await searchYandexDisk(text);
-      if (vaultInfo && !vaultInfo.includes("ничего не найдено") && !vaultInfo.includes("не подключён")) {
-        userMsg = `${text}\n\n[НАЙДЕНО В OBSIDIAN:\n${vaultInfo.slice(0, 1500)}\nИспользуй эти данные для ответа.]`;
-      }
-    } catch {}
-  }
 
   messages.push({ role: "user", content: userMsg });
 
@@ -351,9 +342,9 @@ async function deepseekChat(userId, text) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
     body: JSON.stringify({
       model: DEEPSEEK_MODEL,
-      messages: [{ role: "system", content: system }, ...messages.slice(-6)],
-      max_tokens: 1000,
-      temperature: 0.9,
+      messages: [{ role: "system", content: system }, ...messages.slice(-4)],
+      max_tokens: 800,
+      temperature: 0.7,
     }),
   });
 
@@ -1283,6 +1274,12 @@ async function poll() {
         const result = await researchAndSave(chatId, userId, topic);
         const chunks = splitMessage(result);
         for (const chunk of chunks) await tg("sendMessage", { chat_id: chatId, text: chunk });
+        continue;
+      }
+
+      if (text === "/alarm") {
+        reply = "⏰ Будильник. Примеры:\n• будильник на 7:30 подъём\n• будильник в 9:00 работа каждый день\n• мои напоминания — посмотреть все";
+        await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
 
