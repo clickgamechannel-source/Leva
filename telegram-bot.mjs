@@ -953,6 +953,7 @@ async function poll() {
 
       // Обработка callback_query (кнопки)
       if (update.callback_query) {
+        try {
         const cb = update.callback_query;
         const cbChatId = cb.message.chat.id;
         const cbMsgId = cb.message.message_id;
@@ -1002,6 +1003,7 @@ async function poll() {
           await tg("answerCallbackQuery", { callback_query_id: cb.id });
         }
         continue;
+        } catch (e) { log("Callback error: " + e.message); continue; }
       }
 
       const msg = update.message || update.edited_message;
