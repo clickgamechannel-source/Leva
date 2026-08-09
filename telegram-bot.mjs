@@ -966,6 +966,25 @@ async function poll() {
 
     for (const update of data.result) {
       offset = update.update_id + 1;
+
+      // Обработка callback_query (кнопки)
+      if (update.callback_query) {
+        const cb = update.callback_query;
+        const cbChatId = cb.message.chat.id;
+        if (cb.data.startsWith("alarm_")) {
+          const hour = parseInt(cb.data.split("_")[1]);
+          const target = new Date(mskTime().getFullYear(), mskTime().getMonth(), mskTime().getDate(), hour, 0, 0);
+          const nowMSK = mskTime();
+          if (target <= nowMSK) target.setDate(target.getDate() + 1);
+          if (!botMemory.reminders) botMemory.reminders = [];
+          botMemory.reminders.push({ time: fromMSK(target).toISOString(), message: "Будильник", chatId: cbChatId, created: new Date().toISOString(), sound: "alien" });
+          await saveMemory();
+          await tg("sendMessage", { chat_id: cbChatId, text: `⏰ Будильник на ${hour}:00 установлен` });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Готово!" });
+        }
+        continue;
+      }
+
       const msg = update.message || update.edited_message;
       if (!msg) continue;
 
@@ -1277,9 +1296,22 @@ async function poll() {
         continue;
       }
 
-      if (text === "/alarm") {
-        reply = "⏰ Будильник. Примеры:\n• будильник на 7:30 подъём\n• будильник в 9:00 работа каждый день\n• мои напоминания — посмотреть все";
-        await tg("sendMessage", { chat_id: chatId, text: reply });
+      if (text === "/alarm" || text.match(/^будильник$/i)) {
+        const hours = Array.from({length: 12}, (_, i) => [{ text: `${i+7 > 12 ? i+7-12 : i+7}:00`, callback_data: `alarm_${i+7}` }]);
+        // Показываем клавиатуру с часами
+        await fetch(`${TG_API}/sendMessage`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: "⏰ Выбери час для будильника:",
+            reply_markup: { inline_keyboard: [
+              [{ text: "7:00", callback_data: "alarm_7" }, { text: "8:00", callback_data: "alarm_8" }, { text: "9:00", callback_data: "alarm_9" }],
+              [{ text: "10:00", callback_data: "alarm_10" }, { text: "11:00", callback_data: "alarm_11" }, { text: "12:00", callback_data: "alarm_12" }],
+              [{ text: "13:00", callback_data: "alarm_13" }, { text: "14:00", callback_data: "alarm_14" }, { text: "15:00", callback_data: "alarm_15" }],
+              [{ text: "16:00", callback_data: "alarm_16" }, { text: "17:00", callback_data: "alarm_17" }, { text: "18:00", callback_data: "alarm_18" }],
+            ]}
+          }),
+        });
         continue;
       }
 
