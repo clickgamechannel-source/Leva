@@ -10,6 +10,7 @@ const SUP = "https://smkjvihshumsrynnelji.supabase.co", SK = process.env.SUPABAS
 const UID = 7649644701;
 
 let offset = 0, mem = { facts: [], notes: [], dialogues: [], expenses: [], events: [], habits: {}, shopping: [], newItems: [] };
+let currentModel = "deepseek";
 const voiceOn = new Map(), alarmQ = new Map();
 let lastSearch = "", lastMsgId = 0;
 
@@ -19,7 +20,12 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function tg(method, body) { const r = await fetch(`${API}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); return r.json(); }
 async function send(chat, text) { await tg("sendMessage", { chat_id: chat, text }); }
 
-async function ai(msg) {
+async function ai(msg, model) {
+  const m = model || currentModel;
+  if (m === "gpt4") {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OAI}` }, body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: msg }], max_tokens: 500, temperature: 0.7 }) });
+    const d = await r.json(); return d.choices?.[0]?.message?.content || "GPT не ответил.";
+  }
   const r = await fetch(DS, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${DK}` }, body: JSON.stringify({ model: "deepseek-v4-pro", messages: [{ role: "system", content: "Ты Race, ассистент. Отвечай кратко, на русском." }, { role: "user", content: msg }], max_tokens: 500, temperature: 0.7 }) });
   const d = await r.json(); return d.choices?.[0]?.message?.content || "Не поняла.";
 }
@@ -65,7 +71,10 @@ async function main() {
         console.log("<-", text.slice(0, 60));
         let reply = "";
 
-        if (text === "/start") reply = "Привет! Я Race ✨";
+        if (text === "/start") reply = "Привет! Я Race ✨\n/models — выбор модели";
+        else if (text === "/models") { reply = `Текущая модель: ${currentModel === "deepseek" ? "DeepSeek V4 Pro" : "GPT-4o Mini"}\n\n/model deepseek — DeepSeek\n/model gpt4 — GPT-4o`; }
+        else if (text === "/model deepseek") { currentModel = "deepseek"; reply = "Модель: DeepSeek V4 Pro ✅"; }
+        else if (text === "/model gpt4") { currentModel = "gpt4"; reply = "Модель: GPT-4o Mini ✅"; }
         else if (text === "/weather" || text === "погода") reply = await weather();
         else if (text === "/obsidian" || text.match(/^(?:что в обсидиан|заметк|vault|память|найди в заметк)/i)) { const q = text.replace(/(?:что в обсидиан|заметк|vault|память|найди в заметк|в обсидиане|\/obsidian)/gi, "").trim(); reply = await searchObs(q) || "Ничего не найдено."; }
         else if (text === "/alarm") { alarmQ.set(cid, true); reply = "⏰ На сколько поставить будильник?\nНапиши время, например 7:30"; }
