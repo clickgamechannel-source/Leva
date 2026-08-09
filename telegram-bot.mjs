@@ -52,7 +52,7 @@ const DS_API = "https://api.deepseek.com/chat/completions";
 const context = new Map();
 const pendingResearch = new Map();
 const voicePref = new Map();
-// 
+let lastSearchResult = "";
 let offset = 0;
 
 function addToContext(userId, userMsg, botReply) {
@@ -1748,6 +1748,23 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(добавь это в заметк|добавь это в обсидиан|сохрани это|запиши это)/i)) {
+        if (!lastSearchResult || lastSearchResult.length < 10) {
+          reply = "Нечего сохранять. Сначала попроси найти что-то в интернете.";
+        } else {
+          const ts = mskTime().toISOString().slice(0, 16).replace(/:/g, "-");
+          const path = `Исследования/${ts}.md`;
+          const content = `# Результат поиска\n\n${lastSearchResult}\n\n---\n*Сохранено: ${mskTime().toLocaleString("ru-RU")}*`;
+          const result = await writeObsidianFile(path, content);
+          if (!botMemory.notes) botMemory.notes = [];
+          botMemory.notes.push({ path, content: lastSearchResult.slice(0, 500), time: new Date().toISOString() });
+          await saveMemory();
+          reply = result;
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       // Дата-запросы: "вчера", "сегодня", "позавчера"
       if (text.match(/^(?:вчера|сегодня|позавчера|что было)/i) || (text.match(/(?:вчера|сегодня|позавчера)/i) && text.length < 40)) {
         const now = mskTime();
@@ -1792,6 +1809,7 @@ async function poll() {
         else {
           await tg("sendChatAction", { chat_id: chatId, action: "typing" });
           reply = await webSearch(query);
+          lastSearchResult = reply;
         }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
