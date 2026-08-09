@@ -984,6 +984,7 @@ async function poll() {
             }
             minButtons.push(rowBtns);
           }
+          minButtons.push([{ text: "❌ Отмена", callback_data: "alarm_cancel" }]);
           await fetch(`${TG_API}/editMessageText`, {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ ${hour}:00 — выбери минуты:`, reply_markup: { inline_keyboard: minButtons } }),
@@ -1003,6 +1004,12 @@ async function poll() {
             body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: `⏰ Будильник на ${hour}:${min.toString().padStart(2,"0")} установлен!` }),
           });
           await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Готово!" });
+        } else if (cb.data === "alarm_cancel") {
+          await fetch(`${TG_API}/editMessageText`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: cbChatId, message_id: cbMsgId, text: "❌ Будильник отменён" }),
+          });
+          await tg("answerCallbackQuery", { callback_query_id: cb.id });
         }
         continue;
       }
@@ -1328,6 +1335,7 @@ async function poll() {
           }
           buttons.push(rowBtns);
         }
+        buttons.push([{ text: "❌ Отмена", callback_data: "alarm_cancel" }]);
         await fetch(`${TG_API}/sendMessage`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
