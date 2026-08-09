@@ -1207,6 +1207,35 @@ async function poll() {
         continue;
       }
 
+      if (text.match(/^(расскажи кратко|вкратце|суть|о чём заметка|перескажи|суммируй)\s+(.+)/i)) {
+        const q = text.replace(/^(расскажи кратко|вкратце|суть|о чём заметка|перескажи|суммируй)\s+/i, "").trim();
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        const found = await searchYandexDisk(q);
+        if (found.includes("ничего не найдено")) { reply = `Заметка «${q}» не найдена.`; }
+        else {
+          const match = found.match(/📄\s+(\S+\.md)/);
+          if (match) {
+            try {
+              const dl = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent("Obsidian/" + match[1])}`, { headers: { Authorization: `OAuth ${YANDEX_TOKEN}` } });
+              if (dl.ok) {
+                const dd = await dl.json();
+                if (dd.href) {
+                  const content = await (await fetch(dd.href)).text();
+                  const aiR = await fetch(DS_API, {
+                    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${DEEPSEEK_KEY}` },
+                    body: JSON.stringify({ model: DEEPSEEK_MODEL, max_tokens: 500, messages: [{ role: "system", content: "Перескажи кратко. Главное: о чём, ключевые факты, выводы. На русском." }, { role: "user", content: content.slice(0, 4000) }] }),
+                  });
+                  const aiD = await aiR.json();
+                  reply = `📄 ${match[1]}:\n\n${aiD.choices?.[0]?.message?.content || "Не удалось."}`;
+                }
+              }
+            } catch { reply = "Ошибка чтения."; }
+          } else reply = "Нашла несколько. Уточни:\n" + found.slice(0, 500);
+        }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
       if (text.match(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы|найди в заметк|поищи в заметк)/i)) {
         await tg("sendChatAction", { chat_id: chatId, action: "typing" });
         const q = text.replace(/(?:что в обсидиан|что на диске|прочитай заметк|покажи заметк|что в вики|найди в обсидиан|поищи на диске|что в vault|какие файлы)/gi, "").trim();
