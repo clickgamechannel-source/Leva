@@ -77,7 +77,8 @@ try {
 try {
   await fetch(`${TG_API}/deleteWebhook?drop_pending_updates=true`);
 } catch {}
-log("Webhook удалён. long polling");
+log("Webhook удалён. Жду 5с...");
+await delay(5000);
 offset = -1;
 
 async function readObsidianFile(sub) {
@@ -939,8 +940,7 @@ async function poll() {
 
     if (!data.ok) {
       if (data.description && data.description.includes("Conflict")) {
-        log("Conflict: жду 30с...");
-        await delay(30000);
+        await delay(5000);
         return;
       }
       log("Telegram error: " + data.description);
