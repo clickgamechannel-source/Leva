@@ -456,6 +456,18 @@ async function listObsidianNotes() {
 }
 
 async function getExchangeRates(text) {
+
+async function analyzeText(content, prompt) {
+  if (!OPENAI_KEY) return "OpenAI не подключён.";
+  try {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 500, messages: [{ role: "user", content: `${prompt}\n\nТекст:\n${content}` }] }),
+    });
+    const d = await r.json();
+    return d.choices?.[0]?.message?.content || "Не удалось проанализировать.";
+  } catch { return "Ошибка анализа."; }
+}
   const now = mskTime();
   const searchQuery = text.match(/юан|CNY|cny/i) ? "курс юаня к рублю ЦБ РФ сегодня" : text.match(/доллар|USD|usd/i) ? "курс доллара к рублю ЦБ РФ сегодня" : text.match(/евро|EUR|eur/i) ? "курс евро к рублю ЦБ РФ сегодня" : "курс валют ЦБ РФ сегодня";
   try {
@@ -1238,6 +1250,37 @@ async function poll() {
             reply = `⏰ Будильник на ${h.toString().padStart(2,"0")}:${m.toString().padStart(2,"0")} установлен!\n\n${wishes[Math.floor(Math.random()*wishes.length)]}`;
           } else { reply = "Время должно быть от 0:00 до 23:59. Попробуй ещё раз."; alarmPending.set(userId, true); }
         } else { reply = "Не поняла время. Напиши в формате ЧЧ:ММ, например 7:30. Попробуй ещё раз."; alarmPending.set(userId, true); }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Парсер ссылок
+      const urlMatch = text.match(/(https?:\/\/[^\s]+)/i);
+      if (urlMatch) {
+        const url = urlMatch[1];
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        try {
+          const jinaR = await fetch("https://r.jina.ai/" + url, { headers: { Accept: "text/markdown" } });
+          if (jinaR.ok) {
+            const content = await jinaR.text();
+            const summary = await analyzeText(content.slice(0, 5000), "Перескажи кратко содержание статьи. Выдели главное. На русском.");
+            reply = `📄 ${url}\n\n${summary}`;
+          } else reply = "Не удалось прочитать страницу.";
+        } catch { reply = "Ошибка чтения ссылки."; }
+        await tg("sendMessage", { chat_id: chatId, text: reply });
+        continue;
+      }
+
+      // Проверка сайта
+      if (text.match(/^проверь сайт\s+(.+)/i)) {
+        const site = text.replace(/^проверь сайт\s+/i, "").trim().replace(/^(https?:\/\/)/i, "");
+        const url = "https://" + site;
+        await tg("sendChatAction", { chat_id: chatId, action: "typing" });
+        try {
+          const start = Date.now();
+          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          reply = r.ok ? `✅ ${site} работает (${Date.now()-start}мс)` : `⚠️ ${site} ответил ${r.status}`;
+        } catch (e) { reply = `❌ ${site} не отвечает`; }
         await tg("sendMessage", { chat_id: chatId, text: reply });
         continue;
       }
